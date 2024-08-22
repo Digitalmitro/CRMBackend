@@ -17,6 +17,7 @@ const { SaleModel } = require("./models/UserModel/SaleModel");
 const { AttendanceModel } = require("./models/UserModel/Attendance");
 const { ImageModel } = require("./models/UserModel/ImageModel");
 const { MessageModel } = require("./models/UserModel/MessageModel");
+const { ConcernModel } = require("./models/UserModel/concern");
 const {
   RegisteradminModal,
 } = require("./models/AdminModel/RegisterAdminModel");
@@ -1667,37 +1668,47 @@ server.get("/employees", async (req, res) => {
 
 
 // // Create message populate
-// server.post("/message", async (req, res) => {
-//   const { name, email, message, date, status, user_id } = req.body;
+server.post("/concern", async (req, res) => {
+  const { name, email, message, date, status, user_id } = req.body;
 
-//   try {
-//     // Create a new instance of AdvisorpackageModel
-//     const newPackage = new MessageModel({
-//       name,
-//       email,
-//       message,
-//       date,
-//       status,
-//       user_id,
-//     });
+  try {
+    // Create a new instance of AdvisorpackageModel
+    const newPackage = new ConcernModel({
+      name,
+      email,
+      message,
+      date,
+      status,
+      user_id,
+    });
 
-//     // Save the package to the database
-//     await newPackage.save();
+    // Save the package to the database
+    await newPackage.save();
 
-//     // Update the user's packages array
-//     await RegisteruserModal.findByIdAndUpdate(
-//       user_id,
-//       { $push: { message: newPackage._id } },
-//       { new: true }
-//     );
+    // Update the user's packages array
+    await RegisteruserModal.findByIdAndUpdate(
+      user_id,
+      { $push: { concern: newPackage._id } },
+      { new: true }
+    );
 
-//     // Send a success response
-//     res.send("message Created and associated with Admin");
-//   } catch (error) {
-//     console.log(error);
-//     res.status(500).send("Internal Server Error");
-//   }
-// });
+    // Send a success response
+    res.send("Concern Created and associated with Admin");
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+server.get("/concern", async (req, res) => {
+  try {
+    const data = await ConcernModel.find();
+    res.status(200).json(data);
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
 
 //  message All
 server.get("/message", async (req, res) => {
@@ -1741,24 +1752,24 @@ server.get("/message-user/:id", async (req, res) => {
   }
 });
 // message update by ID
-// server.put("/messageUpdate/:id", async (req, res) => {
-//   const ID = req.params.id;
-//   const { status } = req.body; // Corrected destructuring of status from req.body
-//   try {
-//     const data = await MessageModel.findByIdAndUpdate(
-//       ID,
-//       { status },
-//       { new: true }
-//     );
-//     if (!data) {
-//       return res.status(404).send({ message: "Message not found" });
-//     }
-//     res.send({ message: "Status updated successfully", data });
-//   } catch (error) {
-//     console.log(error);
-//     res.status(500).send("Internal Server Error");
-//   }
-// });
+server.put("/concern/:id", async (req, res) => {
+  const ID = req.params.id;
+  const { status } = req.body; // Corrected destructuring of status from req.body
+  try {
+    const data = await ConcernModel.findByIdAndUpdate(
+      ID,
+      { status },
+      { new: true }
+    );
+    if (!data) {
+      return res.status(404).send({ concern: "Concern not found" });
+    }
+    res.send({ concern: "Status updated successfully", data });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
 
 // API to create or update a message
 server.post("/message", async (req, res) => {

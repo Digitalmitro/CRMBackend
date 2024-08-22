@@ -1,0 +1,22 @@
+// name, email, concern, date, status, user_id 
+
+const mongoose = require("mongoose");
+
+const concernSchema = new mongoose.Schema({
+ 
+    name: { type: String },
+    email: { type: String },
+    message: { type: String },
+    date: { type: String },
+    status: { type: String },
+    
+  user_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "register user",
+    required: true,
+  },
+}, {timestamps: true});
+
+const ConcernModel = mongoose.model("concern",concernSchema);
+
+module.exports = { ConcernModel };

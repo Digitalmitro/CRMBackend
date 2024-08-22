@@ -38,6 +38,7 @@ const registeruserSchema = mongoose.Schema({
     { type: mongoose.Schema.Types.ObjectId, ref: "attendance" },
   ],
   message: [{ type: mongoose.Schema.Types.ObjectId, ref: "message" }],
+  concern: [{ type: mongoose.Schema.Types.ObjectId, ref: "concern" }],
 
   image: { type: mongoose.Schema.Types.ObjectId, ref: "image" },
   notes: { type: mongoose.Schema.Types.ObjectId, ref: "notes" },
