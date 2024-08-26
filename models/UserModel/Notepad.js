@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const notesSchema = new mongoose.Schema({
    
-    notes: { type: String },
+    notes: [{ type: String }],
     user_id: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "register user",

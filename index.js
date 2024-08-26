@@ -1844,34 +1844,29 @@ server.post("/notepad", async (req, res) => {
   const { notes, user_id } = req.body;
 
   try {
-    // Find the existing homecms document for the given user_id
-    const existingPackage = await NotesModel.findOne({ user_id });
+    // Check if the user already has a notes document
+    const existingNotes = await NotesModel.findOne({ user_id });
 
-    if (!existingPackage) {
+    if (!existingNotes) {
       // If no existing document, create a new one
-      const newPackage = new NotesModel({
+      const newNotes = new NotesModel({
         notes,
         user_id,
       });
 
       // Save the new document to the database
-      await newPackage.save();
+      await newNotes.save();
 
-      // Update the user's details array
+      // Update the user's notes field with the new notes document ID
       await RegisteruserModal.findByIdAndUpdate(
         user_id,
-        { $push: { notes: newPackage._id } },
+        { notes: newNotes._id },
         { new: true }
       );
     } else {
-      // If an existing document is found, update its fields
-      await NotesModel.findOneAndUpdate(
-        { user_id },
-        {
-          notes,
-        },
-        { new: true }
-      );
+      // If an existing document is found, update the notes
+      existingNotes.notes = notes;
+      await existingNotes.save();
     }
 
     // Send a success response
@@ -1881,6 +1876,7 @@ server.post("/notepad", async (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 });
+
 // Client GET account details
 server.get("/notepad/:id", async (req, res) => {
   const { id } = req.params;
@@ -1899,14 +1895,14 @@ server.post(
     { name: "docs", maxCount: 1 }, // { name: "Client2Photo", maxCount: 1 },
   ]),
   async (req, res) => {
-    const { docsName } = req.body;
+    const { assigneeName,projectName,docsName } = req.body;
     console.log(req.files);
     // File paths for the uploaded files
     const docs =
       req.files["docs"] && `uploads/${req.files["docs"][0].filename}`;
     try {
       const newPackage = new DocsModel({
-        docsName,
+      assigneeName ,projectName,  docsName,
         docs,
         // user_id,
       });
