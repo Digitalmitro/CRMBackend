@@ -45,6 +45,17 @@ const registeruserSchema = mongoose.Schema({
 
 });
 
+registeruserSchema.methods.generateAuthToken = async function () {
+  try {
+    // const expirationTime = Math.floor(Date.now() / 1000) + (60 * 60);
+    const expirationTime = process.env.expiry
+    let token = jwt.sign({ _id: this._id, exp: expirationTime }, process.env.secret_key);
+    return token;
+  } catch (e) {
+    console.log(`Failed to generate token --> ${e}`);
+  }
+};
+
 const RegisteruserModal = mongoose.model(
   "register user",
   registeruserSchema

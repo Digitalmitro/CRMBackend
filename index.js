@@ -31,8 +31,9 @@ const { MailModel } = require("./models/AdminModel/mailModal");
 const { DocsModel } = require("./models/AdminModel/DocsModel");
 const { ProjectsModel } = require("./models/AdminModel/ProjectsModel");
 const { NotesModel } = require("./models/UserModel/Notepad");
-
-const authenticateToken = require('./middleware/Authmiddleware');
+const adminAuth = require("./middleware/adminAuth");
+const commonAuth = require("./middleware/commonAuth");
+const userAuth = require("./middleware/userAuth");
 
 const server = express();
 //to avoid cors error//
@@ -476,50 +477,105 @@ server.post("/registeradmin", async (req, res) => {
   }
 });
 //ADMIN Login
+// server.post("/loginadmin", async (req, res) => {
+//   const { email, password } = req.body;
+//   try {
+//     const user = await RegisteradminModal.findOne({ email });
+//     if (user) {
+//       bcrypt.compare(password, user.password, (err, result) => {
+//         if (result) {
+//           const accessToken = jwt.sign(
+//             {
+//               _id: user._id,
+//               name: user.name,
+//               email: user.email,
+//               // phone: user.phone,
+//             },
+//             secret_key,
+//             { expiresIn: expiry }
+//           );
+//           res.cookie('accessToken', accessToken, {
+//             httpOnly:true,
+//             // secure : true,
+//             maxAge: 2 * 24 * 60 * 60 * 1000
+//           })
+
+//           res.json({
+//             status: "login successful",
+//             token: accessToken,
+//             user: {
+//               name: user.name,
+//               email: user.email,
+//               phone: user.phone,
+//               _id: user._id,
+
+//             },
+//           });
+//         } else {
+//           res.status(401).json({ status: "wrong entry" });
+//         }
+//       });
+//     } else {
+//       res.status(404).json({ status: "user not found" });
+//     }
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ status: "internal server error" });
+//   }
+// });
+
+// NEW ADMIN LOGIN
 server.post("/loginadmin", async (req, res) => {
-  const { email, password } = req.body;
   try {
-    const user = await RegisteradminModal.findOne({ email });
-    if (user) {
-      bcrypt.compare(password, user.password, (err, result) => {
-        if (result) {
-          const accessToken = jwt.sign(
-            {
-              _id: user._id,
-              name: user.name,
-              email: user.email,
-              // phone: user.phone,
-            },
-            secret_key,
-            { expiresIn: expiry }
-          );
-          res.cookie('accessToken', accessToken, {
-            httpOnly:true,
-            // secure : true,
-            maxAge: 2 * 24 * 60 * 60 * 1000
-          })
+    const logEmail = req.body.email;
+    const logPass = req.body.password;
 
-          res.json({
-            status: "login successful",
-            token: accessToken,
-            user: {
-              name: user.name,
-              email: user.email,
-              phone: user.phone,
-              _id: user._id,
+    if (!logEmail || !logPass) {
+      return res
+        .status(422)
+        .json({ message: "Please fill all the fields.", success: false });
+    }
 
-            },
-          });
-        } else {
-          res.status(401).json({ status: "wrong entry" });
-        }
-      });
+    const adminFound = await RegisteradminModal.findOne({ email: logEmail });
+
+    if (adminFound) {
+      const passCheck = await bcrypt.compare(logPass, adminFound.password);
+      const token = await adminFound.generateAuthToken();
+
+      if (passCheck) {
+        res.status(200).json({
+          status: "login successful",
+          token: token,
+          user: {
+            name: adminFound.name,
+            email: adminFound.email,
+            phone: adminFound.phone,
+            _id: adminFound._id,
+          },
+        });
+      } else {
+        res
+          .status(400)
+          .json({ message: "Invalid login credentials", success: false });
+      }
     } else {
-      res.status(404).json({ status: "user not found" });
+      res.status(422).json({ message: "Admin Not Found !", success: false });
     }
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ status: "internal server error" });
+    res
+      .status(500)
+      .json({ message: "Invalid login credentials", success: false });
+  }
+});
+
+
+// Check Token API
+server.get("/check-admin-token", adminAuth, async (req, res) => {
+  try {
+    // If the middleware passed, the token is valid
+    res.status(200).json({ message: "Token is valid" });
+  } catch (error) {
+    res.status(500).json({ error: "Unable to verify token" });
   }
 });
 
@@ -769,7 +825,7 @@ server.post("/notification", async (req, res) => {
   }
 });
 
-server.get("/notification", async (req, res) => {
+server.get("/notification", adminAuth, async (req, res) => {
   try {
     const notifications = await NotificationModel.find();
     res.send(notifications);
