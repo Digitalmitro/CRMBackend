@@ -27,7 +27,7 @@ registeradminSchema.methods.generateAuthToken = async function () {
   try {
     // const expirationTime = Math.floor(Date.now() / 1000) + (60 * 60);
     const expirationTime = process.env.expiry
-    let token = jwt.sign({ _id: this._id, exp: expirationTime }, process.env.secret_key);
+    let token = jwt.sign({ _id: this._id, expiresIn: expirationTime }, process.env.secret_key);
     return token;
   } catch (e) {
     console.log(`Failed to generate token --> ${e}`);
