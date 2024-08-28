@@ -1,16 +1,18 @@
 const express = require("express");
+require("dotenv").config();
+const cors = require("cors");
+const { default: mongoose } = require("mongoose");
 const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
-require("dotenv").config();
-
-const Port = process.env.port;
-const secret_key = process.env.secret_key;
-//mail//
-const nodemailer = require("nodemailer");
-//to protect user data//
-const bcrypt = require("bcrypt");
+const nodemailer = require("nodemailer");//mail//
+const http = require("http");
+const socketIo = require("socket.io");
+const bcrypt = require("bcrypt");//to protect user data//
 const { connect } = require("./config/db");
+const connection = require("./config/db");
+const cookieParser = require('cookie-parser');
+
 const { CallbackModel } = require("./models/UserModel/CallBackModel");
 const { TransferModel } = require("./models/UserModel/TransferModel");
 const { SaleModel } = require("./models/UserModel/SaleModel");
@@ -29,17 +31,64 @@ const { MailModel } = require("./models/AdminModel/mailModal");
 const { DocsModel } = require("./models/AdminModel/DocsModel");
 const { ProjectsModel } = require("./models/AdminModel/ProjectsModel");
 const { NotesModel } = require("./models/UserModel/Notepad");
-const cors = require("cors");
+
+const authenticateToken = require('./middleware/Authmiddleware');
+
 const server = express();
 //to avoid cors error//
-server.use(cors());
+server.use(cors({
+  origin: [
+    "https://digitalmitro.info",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://admin.digitalmitro.info",
+  ],
+  credentials: true, // Allow credentials (cookies) to be sent
+}));
 server.use(express.json());
-const http = require("http");
-const socketIo = require("socket.io");
-const { default: mongoose } = require("mongoose");
-// Create an HTTP server instance
-const httpServer = http.createServer(server);
+server.use(cookieParser());
+connection();
 
+const Port = process.env.port;
+const secret_key = process.env.secret_key;
+const expiry = process.env.expiry;
+
+
+
+server.use((req, res, next) => {
+  const allowedOrigins = [
+    "https://digitalmitro.info",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://admin.digitalmitro.info",
+  ];
+  // credentials: true,
+
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin); // Set specific origin
+    res.setHeader("Access-Control-Allow-Credentials", "true"); // Allow credentials
+  }
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET, POST, OPTIONS, PUT, PATCH, DELETE"
+  );
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept"
+  );
+
+  // Handle preflight requests
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
+// Create an HTTP server instance
+
+const httpServer = http.createServer(server);
 // Integrate Socket.io with the HTTP server
 const io = socketIo(httpServer, {
   cors: {
@@ -48,13 +97,11 @@ const io = socketIo(httpServer, {
   },
 });
 
-const connection = require("./config/db");
-
-connection();
-
+server.get("/", (req, res) => {
+  res.send("welcome");
+});
 // Store connected users and their corresponding socket IDs
 const users = {};
-
 io.on("connection", (socket) => {
   console.log("New client connected");
 
@@ -129,35 +176,7 @@ io.on("connection", (socket) => {
 });
 
 
-// Set CORS headers
-server.use((req, res, next) => {
-  const allowedOrigins = [
-    "https://digitalmitro.info",
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "https://admin.digitalmitro.info",
-  ];
-  const origin = req.headers.origin;
-
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
-
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, OPTIONS, PUT, PATCH, DELETE"
-  );
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Origin, X-Requested-With, Content-Type, Accept"
-  );
-  next();
-});
-
 //welcome message
-server.get("/", (req, res) => {
-  res.send("welcome");
-});
 
 server.get("/nginx", (req, res) => {
   res.send("welcome to nginx");
@@ -201,7 +220,9 @@ const upload = multer({
 // Serve uploads directory statically
 server.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// //Gmail sent
+
+
+// //Email sent
 server.post("/send-email", async (req, res) => {
   const { to, subject, html } = req.body;
 
@@ -413,6 +434,8 @@ server.get("/mailData", async (req, res) => {
   }
 });
 //ADMIN Section
+
+
 // ADMIN  Register//
 server.post("/registeradmin", async (req, res) => {
   const { name, email, phone, password } = req.body;
@@ -460,25 +483,31 @@ server.post("/loginadmin", async (req, res) => {
     if (user) {
       bcrypt.compare(password, user.password, (err, result) => {
         if (result) {
-          const token = jwt.sign(
+          const accessToken = jwt.sign(
             {
               _id: user._id,
               name: user.name,
               email: user.email,
-              phone: user.phone,
+              // phone: user.phone,
             },
-            secret_key
+            secret_key,
+            { expiresIn: expiry }
           );
+          res.cookie('accessToken', accessToken, {
+            httpOnly:true,
+            // secure : true,
+            maxAge: 2 * 24 * 60 * 60 * 1000
+          })
+
           res.json({
             status: "login successful",
-            token: token,
+            token: accessToken,
             user: {
               name: user.name,
               email: user.email,
               phone: user.phone,
               _id: user._id,
 
-              // Add other user details if needed
             },
           });
         } else {
@@ -493,6 +522,239 @@ server.post("/loginadmin", async (req, res) => {
     res.status(500).json({ status: "internal server error" });
   }
 });
+
+
+//USER Section
+// USER  Register//
+server.post("/registeruser", async (req, res) => {
+  const { name, email, phone, password, type, aliceName } = req.body;
+
+  try {
+    // Check if the email already exists in the database
+    const existingAdvisor = await RegisteruserModal.findOne({ email });
+
+    if (existingAdvisor) {
+      // If email already exists, send an error response
+      res.status(400).send("Email already exists");
+    } else {
+      // Hash the password
+      bcrypt.hash(password, 5, async (err, hash) => {
+        if (err) {
+          console.log(err);
+        } else {
+          // Create a new instance of RegisteradvisorModal with the hashed password
+          const newData = new RegisteruserModal({
+            name,
+            email,
+            phone,
+            password: hash,
+            type,
+            aliceName,
+          });
+
+          // Save the advisor data to the database
+          await newData.save();
+
+          // Send a success response
+          res.send("User Registered");
+        }
+      });
+    }
+  } catch (error) {
+    // Handle other errors, such as missing details in the request
+    console.log(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+//USER Login
+server.post("/loginuser", async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const user = await RegisteruserModal.findOne({ email });
+    if (user) {
+      bcrypt.compare(password, user.password, (err, result) => {
+        if (result) {
+          const accessToken = jwt.sign(
+            {
+              _id: user._id,
+              name: user.name,
+              email: user.email,
+            },
+            secret_key,
+            { expiresIn: expiry }
+          );
+          res.status(200).cookie('accessToken', accessToken, {
+            httpOnly:true,
+            secure : true,
+            maxAge: 2 * 24 * 60 * 60 * 1000
+          }).json({
+            status: "login successful",
+            token: accessToken,
+            user: {
+              name: user.name,
+              email: user.email,
+              phone: user.phone,
+              type: user.type,
+              aliceName: user.aliceName,
+              _id: user._id,
+
+            },
+          });
+        } else {
+          res.status(401).json({ status: "wrong entry" });
+        }
+      });
+    } else {
+      res.status(404).json({ status: "user not found" });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ status: "internal server error" });
+  }
+});
+
+//Update User Detail
+server.put("/updateuser",  async (req, res) => {
+  const { name, email, phone, password, type, user_id, aliceName } = req.body;
+
+  try {
+    // Hash the password
+    bcrypt.hash(password, 10, async (err, hash) => {
+      if (err) {
+        console.log(err);
+        return res.status(500).json({ error: "Error hashing password" });
+      }
+
+      try {
+        // Update user with hashed password
+        const updatedUser = await RegisteruserModal.findByIdAndUpdate(
+          user_id,
+          { name, aliceName, email, phone, password: hash, type },
+          { new: true }
+        );
+
+        if (!updatedUser) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        // Optionally, you can return the updated user as JSON
+        res.json("Updated user details successfully");
+      } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: "Server error" });
+      }
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+// All user
+server.get("/alluser", async (req, res) => {
+  try {
+    // Step 1: Fetch all users
+    const users = await RegisteruserModal.find();
+    const userIds = users.map((el) => el._id);
+
+    // Step 2: Fetch callbacks, transfers, sales, messages, and attendances concurrently
+    const [callbacks, transfers, sales, messages, attendances] =
+      await Promise.all([
+        CallbackModel.find({ user_id: { $in: userIds } }),
+        TransferModel.find({ user_id: { $in: userIds } }),
+        SaleModel.find({ user_id: { $in: userIds } }),
+        MessageModel.find({ user_id: { $in: userIds } }),
+        AttendanceModel.find({ user_id: { $in: userIds } }),
+      ]);
+
+    // Step 3: Map the fetched data to the respective users
+    const userWithData = users.map((user) => {
+      const userCallbacks = callbacks
+        .filter((callback) => callback.user_id.equals(user._id))
+        .map((callback) => callback._id);
+      const userTransfers = transfers
+        .filter((transfer) => transfer.user_id.equals(user._id))
+        .map((transfer) => transfer._id);
+      const userSales = sales
+        .filter((sale) => sale.user_id.equals(user._id))
+        .map((sale) => sale._id);
+      const userMessages = messages
+        .filter((message) => message.user_id.equals(user._id))
+        .map((message) => message.message);
+      const userAttendances = attendances
+        .filter((attendance) => attendance.user_id.equals(user._id))
+        .map((attendance) => attendance._id);
+
+      return {
+        ...user._doc, // Spread the original user data
+        callback: userCallbacks,
+        transfer: userTransfers,
+        sale: userSales,
+        message: userMessages,
+        attendance: userAttendances,
+      };
+    });
+
+    // Send the response with users and their respective data
+    res.send(userWithData);
+  } catch (error) {
+    console.log(error);
+    res.send(error);
+  }
+});
+
+// 1 user
+server.get("/alluser/:id", async (req, res) => {
+  const ID = req.params.id;
+  try {
+    // Step 1: Fetch the user
+    let user = await RegisteruserModal.findOne({ _id: ID });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Step 2: Fetch callbacks, transfers, sales, messages, and attendances concurrently
+    const [callbacks, transfers, sales, messages, attendances] =
+      await Promise.all([
+        CallbackModel.find({ user_id: ID }),
+        TransferModel.find({ user_id: ID }),
+        SaleModel.find({ user_id: ID }),
+        MessageModel.find({ user_id: ID }),
+        AttendanceModel.find({ user_id: ID }),
+      ]);
+
+    // Step 3: Add the fetched data to the user object
+    user = user.toObject(); // Convert Mongoose document to plain object
+    user.callback = callbacks;
+    user.transfer = transfers;
+    user.sale = sales;
+    user.message = messages;
+    user.attendance = attendances;
+
+    // Send the response with the user and their respective data
+    res.status(200).json(user);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+//1 delete
+server.delete("/alluser/:id", async (req, res) => {
+  const ID = req.params.id;
+  try {
+    const user = await RegisteruserModal.findByIdAndDelete(ID);
+    if (!user) {
+      return res.status(404).send({ message: "User not found" });
+    }
+    res.send({ message: "User deleted successfully" });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send({ message: "Internal Server Error" });
+  }
+});
+
+
 
 //NOTIFICATION
 server.post("/notification", async (req, res) => {
@@ -516,6 +778,7 @@ server.get("/notification", async (req, res) => {
     res.status(500).send("An error occurred while getting the notifications.");
   }
 });
+
 
 server.post("/projects", async (req, res) => {
   try {
@@ -555,7 +818,7 @@ server.post("/projects/:projectId", async (req, res) => {
   }
 });
 
-server.get("/projects", async (req, res) => {
+server.get("/projects",  async (req, res) => {
   try {
     const project = await ProjectsModel.find();
     if (!project) {
@@ -711,234 +974,7 @@ server.get("/tasks/:assigneeId", async (req, res) => {
   }
 });
 
-//USER Section
-// USER  Register//
-server.post("/registeruser", async (req, res) => {
-  const { name, email, phone, password, type, aliceName } = req.body;
 
-  try {
-    // Check if the email already exists in the database
-    const existingAdvisor = await RegisteruserModal.findOne({ email });
-
-    if (existingAdvisor) {
-      // If email already exists, send an error response
-      res.status(400).send("Email already exists");
-    } else {
-      // Hash the password
-      bcrypt.hash(password, 5, async (err, hash) => {
-        if (err) {
-          console.log(err);
-        } else {
-          // Create a new instance of RegisteradvisorModal with the hashed password
-          const newData = new RegisteruserModal({
-            name,
-            email,
-            phone,
-            password: hash,
-            type,
-            aliceName,
-          });
-
-          // Save the advisor data to the database
-          await newData.save();
-
-          // Send a success response
-          res.send("User Registered");
-        }
-      });
-    }
-  } catch (error) {
-    // Handle other errors, such as missing details in the request
-    console.log(error);
-    res.status(500).send("Internal Server Error");
-  }
-});
-//USER Login
-server.post("/loginuser", async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    const user = await RegisteruserModal.findOne({ email });
-    if (user) {
-      bcrypt.compare(password, user.password, (err, result) => {
-        if (result) {
-          const token = jwt.sign(
-            {
-              _id: user._id,
-              name: user.name,
-              email: user.email,
-              phone: user.phone,
-              type: user.type,
-              aliceName: user.aliceName,
-            },
-            "Tirtho"
-          );
-          res.json({
-            status: "login successful",
-            token: token,
-            user: {
-              name: user.name,
-              email: user.email,
-              phone: user.phone,
-              type: user.type,
-              aliceName: user.aliceName,
-              _id: user._id,
-
-              // Add other user details if needed
-            },
-          });
-        } else {
-          res.status(401).json({ status: "wrong entry" });
-        }
-      });
-    } else {
-      res.status(404).json({ status: "user not found" });
-    }
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ status: "internal server error" });
-  }
-});
-
-//Update User Detail
-server.put("/updateuser", async (req, res) => {
-  const { name, email, phone, password, type, user_id, aliceName } = req.body;
-
-  try {
-    // Hash the password
-    bcrypt.hash(password, 10, async (err, hash) => {
-      if (err) {
-        console.log(err);
-        return res.status(500).json({ error: "Error hashing password" });
-      }
-
-      try {
-        // Update user with hashed password
-        const updatedUser = await RegisteruserModal.findByIdAndUpdate(
-          user_id,
-          { name, aliceName, email, phone, password: hash, type },
-          { new: true }
-        );
-
-        if (!updatedUser) {
-          return res.status(404).json({ error: "User not found" });
-        }
-
-        // Optionally, you can return the updated user as JSON
-        res.json("Updated user details successfully");
-      } catch (error) {
-        console.log(error);
-        res.status(500).json({ error: "Server error" });
-      }
-    });
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-// All user
-server.get("/alluser", async (req, res) => {
-  try {
-    // Step 1: Fetch all users
-    const users = await RegisteruserModal.find();
-    const userIds = users.map((el) => el._id);
-
-    // Step 2: Fetch callbacks, transfers, sales, messages, and attendances concurrently
-    const [callbacks, transfers, sales, messages, attendances] =
-      await Promise.all([
-        CallbackModel.find({ user_id: { $in: userIds } }),
-        TransferModel.find({ user_id: { $in: userIds } }),
-        SaleModel.find({ user_id: { $in: userIds } }),
-        MessageModel.find({ user_id: { $in: userIds } }),
-        AttendanceModel.find({ user_id: { $in: userIds } }),
-      ]);
-
-    // Step 3: Map the fetched data to the respective users
-    const userWithData = users.map((user) => {
-      const userCallbacks = callbacks
-        .filter((callback) => callback.user_id.equals(user._id))
-        .map((callback) => callback._id);
-      const userTransfers = transfers
-        .filter((transfer) => transfer.user_id.equals(user._id))
-        .map((transfer) => transfer._id);
-      const userSales = sales
-        .filter((sale) => sale.user_id.equals(user._id))
-        .map((sale) => sale._id);
-      const userMessages = messages
-        .filter((message) => message.user_id.equals(user._id))
-        .map((message) => message.message);
-      const userAttendances = attendances
-        .filter((attendance) => attendance.user_id.equals(user._id))
-        .map((attendance) => attendance._id);
-
-      return {
-        ...user._doc, // Spread the original user data
-        callback: userCallbacks,
-        transfer: userTransfers,
-        sale: userSales,
-        message: userMessages,
-        attendance: userAttendances,
-      };
-    });
-
-    // Send the response with users and their respective data
-    res.send(userWithData);
-  } catch (error) {
-    console.log(error);
-    res.send(error);
-  }
-});
-
-// 1 user
-server.get("/alluser/:id", async (req, res) => {
-  const ID = req.params.id;
-  try {
-    // Step 1: Fetch the user
-    let user = await RegisteruserModal.findOne({ _id: ID });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    // Step 2: Fetch callbacks, transfers, sales, messages, and attendances concurrently
-    const [callbacks, transfers, sales, messages, attendances] =
-      await Promise.all([
-        CallbackModel.find({ user_id: ID }),
-        TransferModel.find({ user_id: ID }),
-        SaleModel.find({ user_id: ID }),
-        MessageModel.find({ user_id: ID }),
-        AttendanceModel.find({ user_id: ID }),
-      ]);
-
-    // Step 3: Add the fetched data to the user object
-    user = user.toObject(); // Convert Mongoose document to plain object
-    user.callback = callbacks;
-    user.transfer = transfers;
-    user.sale = sales;
-    user.message = messages;
-    user.attendance = attendances;
-
-    // Send the response with the user and their respective data
-    res.status(200).json(user);
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-});
-
-//1 delete
-server.delete("/alluser/:id", async (req, res) => {
-  const ID = req.params.id;
-  try {
-    const user = await RegisteruserModal.findByIdAndDelete(ID);
-    if (!user) {
-      return res.status(404).send({ message: "User not found" });
-    }
-    res.send({ message: "User deleted successfully" });
-  } catch (error) {
-    console.log(error);
-    res.status(500).send({ message: "Internal Server Error" });
-  }
-});
 //callBacks
 
 // Create callBacks  populate
@@ -1669,7 +1705,7 @@ server.get("/employees", async (req, res) => {
 
 // // Create message populate
 server.post("/concern", async (req, res) => {
-  const { name, email, message, date, status, user_id } = req.body;
+  const { name, email, message, date, status, punchType,user_id } = req.body;
 
   try {
     // Create a new instance of AdvisorpackageModel
@@ -1677,7 +1713,7 @@ server.post("/concern", async (req, res) => {
       name,
       email,
       message,
-      date,
+      date,punchType,
       status,
       user_id,
     });

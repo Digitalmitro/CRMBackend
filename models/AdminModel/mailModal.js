@@ -39,11 +39,3 @@ const MailModel = mongoose.model("mail", mailSchema);
 module.exports = { MailModel };
 
 
-
-
-// {
-//     "BasicWebMailIntro" : "kajal.digitalmitro@gmail.com",
-//     "subject": "Digital Marketing Plan",
-//     "html": "<P>hello</p>",
-//     "user_id" : ""
-// }

@@ -9,6 +9,7 @@ const concernSchema = new mongoose.Schema({
     message: { type: String },
     date: { type: String },
     status: { type: String },
+    punchType: { type: String },
     
   user_id: {
     type: mongoose.Schema.Types.ObjectId,
