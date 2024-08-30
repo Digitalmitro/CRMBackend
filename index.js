@@ -824,8 +824,8 @@ server.post("/notification", async (req, res) => {
     // Save the notification in the database
     const savedNotification = await NotificationModel.create(notification);
 
-    // await msg.save();
-    io.emit("new_notification", savedNotification);
+    await savedNotification.save();
+    // io.emit("new_notification", savedNotification);
     res.status(200).send("Notification sent successfully!");
   } catch (error) {
     console.log(error);
@@ -843,6 +843,24 @@ server.get("/notification", adminAuth, async (req, res) => {
   }
 });
 
+server.put("/notification/:id", async (req, res) => {
+  const ID = req.params.id;
+  const { Status } = req.body; 
+  try {
+    const data = await NotificationModel.findByIdAndUpdate(
+      ID,
+      { Status },
+      { new: true }
+    );
+    if (!data) {
+      return res.status(404).send({ concern: "notification not found" });
+    }
+    res.send({ message: "Status updated successfully", data });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
 
 server.post("/projects", adminAuth, async (req, res) => {
   try {
