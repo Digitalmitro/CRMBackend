@@ -1768,7 +1768,7 @@ server.get("/employees", async (req, res) => {
 
 
 // // Create message populate
-server.post("/concern", async (req, res) => {
+server.post("/concern",  async (req, res) => {
   const { name, email, message, date, status, punchType,user_id } = req.body;
 
   try {
@@ -1800,7 +1800,7 @@ server.post("/concern", async (req, res) => {
   }
 });
 
-server.get("/concern", async (req, res) => {
+server.get("/concern", adminAuth,  async (req, res) => {
   try {
     const data = await ConcernModel.find();
     res.status(200).json(data);
@@ -1809,6 +1809,72 @@ server.get("/concern", async (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 });
+
+server.get("/concern/:id",  async (req, res) => {
+  const id = req.params.id
+  console.log("id", id)
+  try {
+    const data = await ConcernModel.find({user_id: id});
+    console.log("data", data)
+    if(data){
+      res.status(200).json(data)
+    }else{
+      res.status(404).json("no data found");
+
+    }
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+server.get("/concernuser/:id", async (req, res) => {
+  try {
+    // const data = await RegisteruserModal.findById(ID).populate("callback");
+    const ID = new mongoose.Types.ObjectId(req.params.id);
+     console.log("id",ID)
+    let data = await RegisteruserModal.aggregate([
+      {
+        $match: {
+          _id: ID,
+        },
+      },
+      {
+        $lookup: {
+          from: "concerns",
+          localField: "_id",
+          foreignField: "user_id",
+          as: "concern",
+        },
+      },
+    ]);
+    console.log("data", data)
+    // data = data[0];
+    res.status(200).json(data);
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+// Concern update by ID
+server.put("/concern/:id",adminAuth, async (req, res) => {
+  const ID = req.params.id;
+  const { status } = req.body; // Corrected destructuring of status from req.body
+  try {
+    const data = await ConcernModel.findByIdAndUpdate(
+      ID,
+      { status },
+      { new: true }
+    );
+    if (!data) {
+      return res.status(404).send({ concern: "Concern not found" });
+    }
+    res.send({ concern: "Status updated successfully", data });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
 
 //  message All
 server.get("/message", async (req, res) => {
@@ -1846,25 +1912,6 @@ server.get("/message-user/:id", async (req, res) => {
       success: true,
       chatData: data
     });
-  } catch (error) {
-    console.log(error);
-    res.status(500).send("Internal Server Error");
-  }
-});
-// message update by ID
-server.put("/concern/:id", async (req, res) => {
-  const ID = req.params.id;
-  const { status } = req.body; // Corrected destructuring of status from req.body
-  try {
-    const data = await ConcernModel.findByIdAndUpdate(
-      ID,
-      { status },
-      { new: true }
-    );
-    if (!data) {
-      return res.status(404).send({ concern: "Concern not found" });
-    }
-    res.send({ concern: "Status updated successfully", data });
   } catch (error) {
     console.log(error);
     res.status(500).send("Internal Server Error");
