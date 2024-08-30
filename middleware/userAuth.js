@@ -1,14 +1,14 @@
 const jwt = require("jsonwebtoken");
-const { RegisterUserModel } = require("../models/UserModel/RegisterUserModel");
+const { RegisteruserModal } = require("../models/UserModel/RegisterUserModel");
 
 const userAuth = async (req, res, next) => {
   try {
     const token = req.headers.token;
-    const verifyToken = jwt.verify(token, process.env.secret_key);
+    const verifyToken =  jwt.verify(token, process.env.secret_key);
 
     console.log(verifyToken);
 
-    const rootUser = await RegisterUserModel.findOne({ _id: verifyToken._id });
+    const rootUser = await RegisteruserModal.findOne({ _id: verifyToken._id });
 
     console.log(rootUser);
 

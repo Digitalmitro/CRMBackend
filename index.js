@@ -554,16 +554,13 @@ server.post("/loginadmin", async (req, res) => {
           },
         });
       } else {
-        res
-          .status(400)
-          .json({ message: "Invalid login credentials", success: false });
+        res.status(400).json({ message: "Invalid login credentials", success: false });
       }
     } else {
       res.status(422).json({ message: "Admin Not Found !", success: false });
     }
   } catch (error) {
-    res
-      .status(500)
+    res.status(500)
       .json({ message: "Invalid login credentials", success: false });
   }
 });
@@ -580,9 +577,19 @@ server.get("/check-admin-token", adminAuth, async (req, res) => {
 });
 
 
+server.get("/check-user-token", userAuth, async (req, res) => {
+  try {
+    // If the middleware passed, the token is valid
+    res.status(200).json({ message: "Token is valid" });
+  } catch (error) {
+    res.status(500).json({ error: "Unable to verify token" });
+  }
+});
+
+
 //USER Section
 // USER  Register//
-server.post("/registeruser", async (req, res) => {
+server.post("/registeruser", adminAuth, async (req, res) => {
   const { name, email, phone, password, type, aliceName } = req.body;
 
   try {
@@ -624,42 +631,40 @@ server.post("/registeruser", async (req, res) => {
 });
 //USER Login
 server.post("/loginuser", async (req, res) => {
-  const { email, password } = req.body;
   try {
-    const user = await RegisteruserModal.findOne({ email });
-    if (user) {
-      bcrypt.compare(password, user.password, (err, result) => {
-        if (result) {
-          const accessToken = jwt.sign(
-            {
-              _id: user._id,
-              name: user.name,
-              email: user.email,
-            },
-            secret_key,
-            { expiresIn: expiry }
-          );
-          res.status(200).cookie('accessToken', accessToken, {
-            httpOnly:true,
-            secure : true,
-            maxAge: 2 * 24 * 60 * 60 * 1000
-          }).json({
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res
+      .status(422)
+      .json({ message: "Please fill all the fields.", success: false });
+  }
+
+  const adminFound = await RegisteruserModal.findOne({ email });
+
+  if (adminFound) {
+    const passCheck = await bcrypt.compare(password, adminFound.password);
+    const token = await adminFound.generateAuthToken();
+
+    if (passCheck) {
+    
+          res.status(200).json({
             status: "login successful",
-            token: accessToken,
+            token: token,
             user: {
-              name: user.name,
-              email: user.email,
-              phone: user.phone,
-              type: user.type,
-              aliceName: user.aliceName,
-              _id: user._id,
+              name: adminFound.name,
+              email: adminFound.email,
+              phone: adminFound.phone,
+              type: adminFound.type,
+              aliceName: adminFound.aliceName,
+              _id: adminFound._id,
 
             },
           });
         } else {
-          res.status(401).json({ status: "wrong entry" });
+          res.status(401).json({ message: "Invalid login credentials", success: false });
         }
-      });
+     
     } else {
       res.status(404).json({ status: "user not found" });
     }
@@ -670,7 +675,7 @@ server.post("/loginuser", async (req, res) => {
 });
 
 //Update User Detail
-server.put("/updateuser",  async (req, res) => {
+server.put("/updateuser", adminAuth , async (req, res) => {
   const { name, email, phone, password, type, user_id, aliceName } = req.body;
 
   try {
@@ -706,7 +711,7 @@ server.put("/updateuser",  async (req, res) => {
   }
 });
 // All user
-server.get("/alluser", async (req, res) => {
+server.get("/alluser", commonAuth, async (req, res) => {
   try {
     // Step 1: Fetch all users
     const users = await RegisteruserModal.find();
@@ -759,7 +764,7 @@ server.get("/alluser", async (req, res) => {
 });
 
 // 1 user
-server.get("/alluser/:id", async (req, res) => {
+server.get("/alluser/:id", commonAuth, async (req, res) => {
   const ID = req.params.id;
   try {
     // Step 1: Fetch the user
@@ -796,7 +801,7 @@ server.get("/alluser/:id", async (req, res) => {
 });
 
 //1 delete
-server.delete("/alluser/:id", async (req, res) => {
+server.delete("/alluser/:id", adminAuth, async (req, res) => {
   const ID = req.params.id;
   try {
     const user = await RegisteruserModal.findByIdAndDelete(ID);
@@ -815,9 +820,12 @@ server.delete("/alluser/:id", async (req, res) => {
 //NOTIFICATION
 server.post("/notification", async (req, res) => {
   try {
-    const { message } = req.body;
-    const msg = new NotificationModel({ message });
-    await msg.save();
+    const notification = req.body;
+    // Save the notification in the database
+    const savedNotification = await NotificationModel.create(notification);
+
+    // await msg.save();
+    io.emit("new_notification", savedNotification);
     res.status(200).send("Notification sent successfully!");
   } catch (error) {
     console.log(error);
@@ -836,7 +844,7 @@ server.get("/notification", adminAuth, async (req, res) => {
 });
 
 
-server.post("/projects", async (req, res) => {
+server.post("/projects", adminAuth, async (req, res) => {
   try {
     const { projectName, tasks } = req.body;
     const project = new ProjectsModel({ projectName, tasks });
@@ -848,7 +856,7 @@ server.post("/projects", async (req, res) => {
 });
 
 // add tasks in particular project
-server.post("/projects/:projectId", async (req, res) => {
+server.post("/projects/:projectId",adminAuth,  async (req, res) => {
   try {
     const { projectId } = req.params;
     const taskData = req.body;
@@ -902,7 +910,7 @@ server.get("/projects/:projectId", async (req, res) => {
 });
 
 // Update a project by ID
-server.put("/projects/:projectId", async (req, res) => {
+server.put("/projects/:projectId",adminAuth, async (req, res) => {
   try {
     const { projectId } = req.params;
     const updateData = req.body;
@@ -923,7 +931,7 @@ server.put("/projects/:projectId", async (req, res) => {
   }
 });
 
-server.delete("/projects/:projectId/tasks/:taskId", async (req, res) => {
+server.delete("/projects/:projectId/tasks/:taskId", adminAuth, async (req, res) => {
   const { projectId, taskId } = req.params;
   console.log(req.params);
   try {
@@ -954,7 +962,7 @@ server.delete("/projects/:projectId/tasks/:taskId", async (req, res) => {
   }
 });
 
-server.put("/tasks/:taskId", async (req, res) => {
+server.put("/tasks/:taskId",commonAuth, async (req, res) => {
   const taskId = req.params.taskId;
 
   // Destructure fields from req.body
