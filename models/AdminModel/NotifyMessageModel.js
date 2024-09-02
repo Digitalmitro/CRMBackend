@@ -4,7 +4,7 @@ const msgnotificationSchema = new mongoose.Schema({
    senderName:  {type: String},
    Date :  {type: String},
    status :  {type: Boolean},
-   message: [{type: String}],
+   message: [String],
    senderId : {type:String},
    receiverId : {type:String}
 });

@@ -31,7 +31,9 @@ const { MailModel } = require("./models/AdminModel/mailModal");
 const { DocsModel } = require("./models/AdminModel/DocsModel");
 const { ProjectsModel } = require("./models/AdminModel/ProjectsModel");
 const { NotesModel } = require("./models/UserModel/Notepad");
-const { NotifyMessageModel } = require("./models/AdminModel/NotifyMessageModel");
+const {
+  NotifyMessageModel,
+} = require("./models/AdminModel/NotifyMessageModel");
 const adminAuth = require("./middleware/adminAuth");
 const commonAuth = require("./middleware/commonAuth");
 const userAuth = require("./middleware/userAuth");
@@ -132,7 +134,7 @@ io.on("connection", (socket) => {
           role: msg.role,
           status: msg.status,
         });
-        console.log("existing messsage ",existingMessages.messages)
+        console.log("existing messsage ", existingMessages.messages);
         await existingMessages.save();
       } else {
         const newMessage = new MessageModel({
@@ -714,7 +716,7 @@ server.put("/updateuser", adminAuth, async (req, res) => {
   }
 });
 // All user
-server.get("/alluser", commonAuth, async (req, res) => {
+server.get("/alluser", async (req, res) => {
   try {
     // Step 1: Fetch all users
     const users = await RegisteruserModal.find();
@@ -834,7 +836,7 @@ server.post("/notification", async (req, res) => {
   }
 });
 
-server.get("/notification", adminAuth, async (req, res) => {
+server.get("/notification", async (req, res) => {
   try {
     const notifications = await NotificationModel.find();
     res.send(notifications);
@@ -1821,7 +1823,7 @@ server.post("/concern", async (req, res) => {
   }
 });
 
-server.get("/concern", adminAuth, async (req, res) => {
+server.get("/concern", async (req, res) => {
   try {
     const data = await ConcernModel.find();
     res.status(200).json(data);
@@ -1989,21 +1991,85 @@ server.post("/message", async (req, res) => {
 
 server.post("/notifymessage", async (req, res) => {
   try {
-    const notification = req.body;
+    const { senderName, Date, status, message, senderId, receiverId } =
+      req.body;
     // Save the notification in the database
-    const savedNotification = await NotifyMessageModel.create(notification);
 
-    await savedNotification.save();
-    // io.emit("new_notification", savedNotification);
-    res.status(200).json({message:"Message Notification sent successfully!", 
-      data : savedNotification
-    });
+    const isExist = await NotifyMessageModel.findOne({ senderId: senderId });
+    if (isExist) {
+    const messageData = isExist.message.push(
+        message
+      );
+ await isExist.save()
+      res.status(200)
+        .json({ message: "Message Notification push to data" });
+    } else {
+      const savedNotification = new NotifyMessageModel({
+        senderName,
+        Date,
+        status,
+       message: [message],
+        senderId,
+        receiverId,
+      });
+      const docsData = await savedNotification.save();
+      res.status(200).json({ mesage: "mesage Notified", data: docsData });
+    }
   } catch (error) {
     console.log(error);
     res.status(500).send("An error occurred while sending the notification.");
   }
 });
 
+server.get('/notifymessage',async (req,res)=> {
+  try{
+    const data = await NotifyMessageModel.find()
+    res.status(200).json({
+      message:"data succesful",
+      data:data
+    })
+  }catch(err){
+    console.log(err)
+    res.status(500).json(err)
+  }
+})
+
+
+server.delete('/notifymessage', async (req, res) => {
+  const { id, type } = req.query; // 'id' is the ID value, 'type' is either 'sender' or 'receiver'
+
+  try {
+    let isIdDeleted;
+    if (type === 'sender') {
+      isIdDeleted = await NotifyMessageModel.findOneAndDelete({ senderId: id });
+    } else if (type === 'receiver') {
+      isIdDeleted = await NotifyMessageModel.findOneAndDelete({ receiverId: id });
+    } else {
+      return res.status(400).json('Invalid type specified');
+    }
+
+    if (!isIdDeleted) {
+      return res.status(404).json('Notification not found');
+    }
+
+    res.status(200).json({ message: 'Notification deleted successfully' });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json('An error occurred while deleting the notification');
+  }
+});
+
+
+// server.delete('/notifymessage/:id', async (res, res)=> {
+//   const { id } = req.params
+//   try{
+//    const isIdDeleted = await NotifyMessageModel.findOneAndDelete(id)
+//    if(isIdDeleted) res.status(404).json('Id not found') 
+//    await NotifyMessageModel.save()
+//   }catch(Err){
+//     console.log(Err)
+//   }
+// })
 // API to get messages for a specific user_id
 server.get("/message/:user_id", async (req, res) => {
   const { user_id } = req.params;
