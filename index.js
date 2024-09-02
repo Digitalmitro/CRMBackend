@@ -5,13 +5,13 @@ const { default: mongoose } = require("mongoose");
 const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
-const nodemailer = require("nodemailer");//mail//
+const nodemailer = require("nodemailer"); //mail//
 const http = require("http");
 const socketIo = require("socket.io");
-const bcrypt = require("bcrypt");//to protect user data//
+const bcrypt = require("bcrypt"); //to protect user data//
 const { connect } = require("./config/db");
 const connection = require("./config/db");
-const cookieParser = require('cookie-parser');
+const cookieParser = require("cookie-parser");
 
 const { CallbackModel } = require("./models/UserModel/CallBackModel");
 const { TransferModel } = require("./models/UserModel/TransferModel");
@@ -31,21 +31,24 @@ const { MailModel } = require("./models/AdminModel/mailModal");
 const { DocsModel } = require("./models/AdminModel/DocsModel");
 const { ProjectsModel } = require("./models/AdminModel/ProjectsModel");
 const { NotesModel } = require("./models/UserModel/Notepad");
+const { NotifyMessageModel } = require("./models/AdminModel/NotifyMessageModel");
 const adminAuth = require("./middleware/adminAuth");
 const commonAuth = require("./middleware/commonAuth");
 const userAuth = require("./middleware/userAuth");
 
 const server = express();
 //to avoid cors error//
-server.use(cors({
-  origin: [
-    "https://digitalmitro.info",
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "https://admin.digitalmitro.info",
-  ],
-  credentials: true, // Allow credentials (cookies) to be sent
-}));
+server.use(
+  cors({
+    origin: [
+      "https://digitalmitro.info",
+      "http://localhost:5173",
+      "http://localhost:3000",
+      "https://admin.digitalmitro.info",
+    ],
+    credentials: true, // Allow credentials (cookies) to be sent
+  })
+);
 server.use(express.json());
 server.use(cookieParser());
 connection();
@@ -53,8 +56,6 @@ connection();
 const Port = process.env.port;
 const secret_key = process.env.secret_key;
 const expiry = process.env.expiry;
-
-
 
 server.use((req, res, next) => {
   const allowedOrigins = [
@@ -116,7 +117,9 @@ io.on("connection", (socket) => {
   socket.on("sendMsg", async (msg) => {
     try {
       // Save the message to the database
-      const existingMessages = await MessageModel.findOne({ user_id: msg.userId });
+      const existingMessages = await MessageModel.findOne({
+        user_id: msg.userId,
+      });
 
       if (existingMessages) {
         existingMessages.messages.push({
@@ -127,19 +130,24 @@ io.on("connection", (socket) => {
           message: msg.message,
           time: msg.time,
           role: msg.role,
+          status: msg.status,
         });
+        console.log("existing messsage ",existingMessages.messages)
         await existingMessages.save();
       } else {
         const newMessage = new MessageModel({
-          messages: [{
-            senderId: msg.senderId,
-            receiverId: msg.receiverId,
-            name: msg.name,
-            email: msg.email,
-            message: msg.message,
-            time: msg.time,
-            role: msg.role,
-          }],
+          messages: [
+            {
+              senderId: msg.senderId,
+              receiverId: msg.receiverId,
+              name: msg.name,
+              email: msg.email,
+              message: msg.message,
+              time: msg.time,
+              role: msg.role,
+              status: msg.status,
+            },
+          ],
           date: new Date().toLocaleDateString(),
           user_id: msg.userId,
         });
@@ -149,15 +157,15 @@ io.on("connection", (socket) => {
       console.log("Message saved to the database");
 
       // Send the message to the specific user
-      console.log(users)
-      console.log(`Sender --> ${msg.senderId}`)
-      console.log(`Receiver --> ${msg.receiverId}`)
+      console.log(users);
+      console.log(`Sender --> ${msg.senderId}`);
+      console.log(`Receiver --> ${msg.receiverId}`);
 
       const recipientSocketId = users[msg.receiverId];
-      console.log(recipientSocketId)
+      console.log(recipientSocketId);
       if (recipientSocketId) {
         io.to(recipientSocketId).emit("chat message", msg);
-      } 
+      }
     } catch (err) {
       console.error("Error saving message to the database:", err);
     }
@@ -175,7 +183,6 @@ io.on("connection", (socket) => {
     }
   });
 });
-
 
 //welcome message
 
@@ -220,8 +227,6 @@ const upload = multer({
 
 // Serve uploads directory statically
 server.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-
 
 // //Email sent
 server.post("/send-email", async (req, res) => {
@@ -436,7 +441,6 @@ server.get("/mailData", async (req, res) => {
 });
 //ADMIN Section
 
-
 // ADMIN  Register//
 server.post("/registeradmin", async (req, res) => {
   const { name, email, phone, password } = req.body;
@@ -554,17 +558,19 @@ server.post("/loginadmin", async (req, res) => {
           },
         });
       } else {
-        res.status(400).json({ message: "Invalid login credentials", success: false });
+        res
+          .status(400)
+          .json({ message: "Invalid login credentials", success: false });
       }
     } else {
       res.status(422).json({ message: "Admin Not Found !", success: false });
     }
   } catch (error) {
-    res.status(500)
+    res
+      .status(500)
       .json({ message: "Invalid login credentials", success: false });
   }
 });
-
 
 // Check Token API
 server.get("/check-admin-token", adminAuth, async (req, res) => {
@@ -576,7 +582,6 @@ server.get("/check-admin-token", adminAuth, async (req, res) => {
   }
 });
 
-
 server.get("/check-user-token", userAuth, async (req, res) => {
   try {
     // If the middleware passed, the token is valid
@@ -585,7 +590,6 @@ server.get("/check-user-token", userAuth, async (req, res) => {
     res.status(500).json({ error: "Unable to verify token" });
   }
 });
-
 
 //USER Section
 // USER  Register//
@@ -632,39 +636,38 @@ server.post("/registeruser", adminAuth, async (req, res) => {
 //USER Login
 server.post("/loginuser", async (req, res) => {
   try {
-  const { email, password } = req.body;
+    const { email, password } = req.body;
 
-  if (!email || !password) {
-    return res
-      .status(422)
-      .json({ message: "Please fill all the fields.", success: false });
-  }
+    if (!email || !password) {
+      return res
+        .status(422)
+        .json({ message: "Please fill all the fields.", success: false });
+    }
 
-  const adminFound = await RegisteruserModal.findOne({ email });
+    const adminFound = await RegisteruserModal.findOne({ email });
 
-  if (adminFound) {
-    const passCheck = await bcrypt.compare(password, adminFound.password);
-    const token = await adminFound.generateAuthToken();
+    if (adminFound) {
+      const passCheck = await bcrypt.compare(password, adminFound.password);
+      const token = await adminFound.generateAuthToken();
 
-    if (passCheck) {
-    
-          res.status(200).json({
-            status: "login successful",
-            token: token,
-            user: {
-              name: adminFound.name,
-              email: adminFound.email,
-              phone: adminFound.phone,
-              type: adminFound.type,
-              aliceName: adminFound.aliceName,
-              _id: adminFound._id,
-
-            },
-          });
-        } else {
-          res.status(401).json({ message: "Invalid login credentials", success: false });
-        }
-     
+      if (passCheck) {
+        res.status(200).json({
+          status: "login successful",
+          token: token,
+          user: {
+            name: adminFound.name,
+            email: adminFound.email,
+            phone: adminFound.phone,
+            type: adminFound.type,
+            aliceName: adminFound.aliceName,
+            _id: adminFound._id,
+          },
+        });
+      } else {
+        res
+          .status(401)
+          .json({ message: "Invalid login credentials", success: false });
+      }
     } else {
       res.status(404).json({ status: "user not found" });
     }
@@ -675,7 +678,7 @@ server.post("/loginuser", async (req, res) => {
 });
 
 //Update User Detail
-server.put("/updateuser", adminAuth , async (req, res) => {
+server.put("/updateuser", adminAuth, async (req, res) => {
   const { name, email, phone, password, type, user_id, aliceName } = req.body;
 
   try {
@@ -815,8 +818,6 @@ server.delete("/alluser/:id", adminAuth, async (req, res) => {
   }
 });
 
-
-
 //NOTIFICATION
 server.post("/notification", async (req, res) => {
   try {
@@ -845,7 +846,7 @@ server.get("/notification", adminAuth, async (req, res) => {
 
 server.put("/notification/:id", async (req, res) => {
   const ID = req.params.id;
-  const { Status } = req.body; 
+  const { Status } = req.body;
   try {
     const data = await NotificationModel.findByIdAndUpdate(
       ID,
@@ -874,7 +875,7 @@ server.post("/projects", adminAuth, async (req, res) => {
 });
 
 // add tasks in particular project
-server.post("/projects/:projectId",adminAuth,  async (req, res) => {
+server.post("/projects/:projectId", adminAuth, async (req, res) => {
   try {
     const { projectId } = req.params;
     const taskData = req.body;
@@ -900,7 +901,7 @@ server.post("/projects/:projectId",adminAuth,  async (req, res) => {
   }
 });
 
-server.get("/projects",  async (req, res) => {
+server.get("/projects", async (req, res) => {
   try {
     const project = await ProjectsModel.find();
     if (!project) {
@@ -928,7 +929,7 @@ server.get("/projects/:projectId", async (req, res) => {
 });
 
 // Update a project by ID
-server.put("/projects/:projectId",adminAuth, async (req, res) => {
+server.put("/projects/:projectId", adminAuth, async (req, res) => {
   try {
     const { projectId } = req.params;
     const updateData = req.body;
@@ -949,38 +950,42 @@ server.put("/projects/:projectId",adminAuth, async (req, res) => {
   }
 });
 
-server.delete("/projects/:projectId/tasks/:taskId", adminAuth, async (req, res) => {
-  const { projectId, taskId } = req.params;
-  console.log(req.params);
-  try {
-    // Find the project by ID
-    const project = await ProjectsModel.findById(projectId);
-    if (!project) {
-      return res.status(404).send({ message: "Project not found" });
+server.delete(
+  "/projects/:projectId/tasks/:taskId",
+  adminAuth,
+  async (req, res) => {
+    const { projectId, taskId } = req.params;
+    console.log(req.params);
+    try {
+      // Find the project by ID
+      const project = await ProjectsModel.findById(projectId);
+      if (!project) {
+        return res.status(404).send({ message: "Project not found" });
+      }
+
+      // Find the task within the project's tasks array by its ID and remove it
+      const taskIndex = project.tasks.findIndex(
+        (task) => task._id.toString() === taskId
+      );
+      if (taskIndex === -1) {
+        return res.status(404).send({ message: "Task not found" });
+      }
+
+      // Remove the task from the tasks array
+      project.tasks.splice(taskIndex, 1);
+
+      // Save the updated project
+      await project.save();
+
+      res.send({ message: "Task deleted successfully" });
+    } catch (error) {
+      console.log(error);
+      res.status(500).send({ message: "Internal Server Error" });
     }
-
-    // Find the task within the project's tasks array by its ID and remove it
-    const taskIndex = project.tasks.findIndex(
-      (task) => task._id.toString() === taskId
-    );
-    if (taskIndex === -1) {
-      return res.status(404).send({ message: "Task not found" });
-    }
-
-    // Remove the task from the tasks array
-    project.tasks.splice(taskIndex, 1);
-
-    // Save the updated project
-    await project.save();
-
-    res.send({ message: "Task deleted successfully" });
-  } catch (error) {
-    console.log(error);
-    res.status(500).send({ message: "Internal Server Error" });
   }
-});
+);
 
-server.put("/tasks/:taskId",commonAuth, async (req, res) => {
+server.put("/tasks/:taskId", commonAuth, async (req, res) => {
   const taskId = req.params.taskId;
 
   // Destructure fields from req.body
@@ -1055,7 +1060,6 @@ server.get("/tasks/:assigneeId", async (req, res) => {
       .send({ message: "Error retrieving tasks for assignee", error });
   }
 });
-
 
 //callBacks
 
@@ -1698,7 +1702,6 @@ server.get("/image/:id", async (req, res) => {
   }
 });
 
-
 //  message All
 server.get("/employees", async (req, res) => {
   try {
@@ -1709,27 +1712,27 @@ server.get("/employees", async (req, res) => {
           from: "messages",
           localField: "_id",
           foreignField: "user_id",
-          as: "empMessages"
-        }
+          as: "empMessages",
+        },
       },
       {
         $unwind: {
           path: "$empMessages",
-          preserveNullAndEmptyArrays: true
-        }
+          preserveNullAndEmptyArrays: true,
+        },
       },
       // Unwind the messages array to access individual messages
       {
         $unwind: {
           path: "$empMessages.messages",
-          preserveNullAndEmptyArrays: true
-        }
+          preserveNullAndEmptyArrays: true,
+        },
       },
       // Sort by the message time in descending order to get the most recent message
       {
         $sort: {
-          "empMessages.messages.time": -1
-        }
+          "empMessages.messages.time": -1,
+        },
       },
       // Group by _id to get the most recent message
       {
@@ -1741,23 +1744,23 @@ server.get("/employees", async (req, res) => {
           image: { $first: "$image" },
           lastMessage: { $first: "$empMessages.messages.message" },
           lastMessageTime: { $first: "$empMessages.messages.time" },
-          lastMessageSender: { $first: "$empMessages.messages.senderId" }
-        }
+          lastMessageSender: { $first: "$empMessages.messages.senderId" },
+        },
       },
       // Perform the image lookup
       {
         $lookup: {
-          from: 'images',
-          localField: 'image',
+          from: "images",
+          localField: "image",
           foreignField: "imageUrl",
-          as: "empImg"
-        }
+          as: "empImg",
+        },
       },
       {
         $unwind: {
           path: "$empImg",
-          preserveNullAndEmptyArrays: true
-        }
+          preserveNullAndEmptyArrays: true,
+        },
       },
       // Final projection
       {
@@ -1768,13 +1771,13 @@ server.get("/employees", async (req, res) => {
           image: { $ifNull: ["$empImg", null] },
           lastMessage: 1,
           lastMessageTime: 1,
-          lastMessageSender: 1
-        }
+          lastMessageSender: 1,
+        },
       },
       // Final sort by lastMessageTime
       {
-        $sort: { lastMessageTime: -1 }
-      }
+        $sort: { lastMessageTime: -1 },
+      },
     ]);
 
     res.status(200).json(data);
@@ -1784,10 +1787,9 @@ server.get("/employees", async (req, res) => {
   }
 });
 
-
 // // Create message populate
-server.post("/concern",  async (req, res) => {
-  const { name, email, message, date, status, punchType,user_id } = req.body;
+server.post("/concern", async (req, res) => {
+  const { name, email, message, date, status, punchType, user_id } = req.body;
 
   try {
     // Create a new instance of AdvisorpackageModel
@@ -1795,7 +1797,8 @@ server.post("/concern",  async (req, res) => {
       name,
       email,
       message,
-      date,punchType,
+      date,
+      punchType,
       status,
       user_id,
     });
@@ -1818,7 +1821,7 @@ server.post("/concern",  async (req, res) => {
   }
 });
 
-server.get("/concern", adminAuth,  async (req, res) => {
+server.get("/concern", adminAuth, async (req, res) => {
   try {
     const data = await ConcernModel.find();
     res.status(200).json(data);
@@ -1828,17 +1831,16 @@ server.get("/concern", adminAuth,  async (req, res) => {
   }
 });
 
-server.get("/concern/:id",  async (req, res) => {
-  const id = req.params.id
-  console.log("id", id)
+server.get("/concern/:id", async (req, res) => {
+  const id = req.params.id;
+  console.log("id", id);
   try {
-    const data = await ConcernModel.find({user_id: id});
-    console.log("data", data)
-    if(data){
-      res.status(200).json(data)
-    }else{
+    const data = await ConcernModel.find({ user_id: id });
+    console.log("data", data);
+    if (data) {
+      res.status(200).json(data);
+    } else {
       res.status(404).json("no data found");
-
     }
   } catch (error) {
     console.log(error);
@@ -1849,7 +1851,7 @@ server.get("/concernuser/:id", async (req, res) => {
   try {
     // const data = await RegisteruserModal.findById(ID).populate("callback");
     const ID = new mongoose.Types.ObjectId(req.params.id);
-     console.log("id",ID)
+    console.log("id", ID);
     let data = await RegisteruserModal.aggregate([
       {
         $match: {
@@ -1865,7 +1867,7 @@ server.get("/concernuser/:id", async (req, res) => {
         },
       },
     ]);
-    console.log("data", data)
+    console.log("data", data);
     // data = data[0];
     res.status(200).json(data);
   } catch (error) {
@@ -1874,7 +1876,7 @@ server.get("/concernuser/:id", async (req, res) => {
   }
 });
 // Concern update by ID
-server.put("/concern/:id",adminAuth, async (req, res) => {
+server.put("/concern/:id", adminAuth, async (req, res) => {
   const ID = req.params.id;
   const { status } = req.body; // Corrected destructuring of status from req.body
   try {
@@ -1892,7 +1894,6 @@ server.put("/concern/:id",adminAuth, async (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 });
-
 
 //  message All
 server.get("/message", async (req, res) => {
@@ -1920,15 +1921,17 @@ server.get("/message/:id", async (req, res) => {
 server.get("/message-user/:id", async (req, res) => {
   try {
     const ID = new mongoose.Types.ObjectId(req.params.id);
-    const data = await MessageModel.aggregate([{
-      $match: {
-        user_id: ID
+    const data = await MessageModel.aggregate([
+      {
+        $match: {
+          user_id: ID,
+        },
       },
-    }])
+    ]);
     res.status(200).json({
       message: "Chat retrieved",
       success: true,
-      chatData: data
+      chatData: data,
     });
   } catch (error) {
     console.log(error);
@@ -1950,6 +1953,7 @@ server.post("/message", async (req, res) => {
       existingMessage.messages.push({
         senderId,
         message,
+        status,
         time,
       });
 
@@ -1980,6 +1984,23 @@ server.post("/message", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send("Internal Server Error");
+  }
+});
+
+server.post("/notifymessage", async (req, res) => {
+  try {
+    const notification = req.body;
+    // Save the notification in the database
+    const savedNotification = await NotifyMessageModel.create(notification);
+
+    await savedNotification.save();
+    // io.emit("new_notification", savedNotification);
+    res.status(200).json({message:"Message Notification sent successfully!", 
+      data : savedNotification
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("An error occurred while sending the notification.");
   }
 });
 
@@ -2060,14 +2081,16 @@ server.post(
     { name: "docs", maxCount: 1 }, // { name: "Client2Photo", maxCount: 1 },
   ]),
   async (req, res) => {
-    const { assigneeName,projectName,docsName } = req.body;
+    const { assigneeName, projectName, docsName } = req.body;
     console.log(req.files);
     // File paths for the uploaded files
     const docs =
       req.files["docs"] && `uploads/${req.files["docs"][0].filename}`;
     try {
       const newPackage = new DocsModel({
-      assigneeName ,projectName,  docsName,
+        assigneeName,
+        projectName,
+        docsName,
         docs,
         // user_id,
       });
