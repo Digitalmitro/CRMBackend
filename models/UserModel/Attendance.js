@@ -5,9 +5,14 @@ const attendanceSchema = new mongoose.Schema(
     userName: { type: String },
     userEmail: { type: String },
     currentDate: { type: Date },
-    punchIn: { type: Date },
-    punchOut: { type: Date },
-    workingTime: { type: Number, default: 0 },
+    punches: [
+      {
+        punchIn: { type: Date },
+        punchOut: { type: Date },
+        workingTime: { type: Number, default: 0 },
+      },
+    ],
+    totalWorkingTime: { type: Number, default: 0 },
     ip: { type: String },
     status: {
       type: String,
