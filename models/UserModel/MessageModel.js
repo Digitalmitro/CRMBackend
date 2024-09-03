@@ -9,7 +9,7 @@ const messageSchema = new mongoose.Schema({
       email: { type: String },
       image: { type: String },
       message: { type: String },
-      time: { type: String },
+      time: { type: Date },
       role: {
         type: String,
         enum: ["admin", "user"]
