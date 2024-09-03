@@ -482,6 +482,50 @@ server.post("/registeradmin", async (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 });
+
+
+server.put("/updateadminpassword", async (req, res) => {
+  const { email, oldPassword, newPassword } = req.body;
+
+  try {
+    // Check if the admin exists in the database
+    const existingAdmin = await RegisteradminModal.findOne({ email });
+
+    if (!existingAdmin) {
+      // If the admin does not exist, send an error response
+      return res.status(404).send("Admin not found");
+    }
+
+    // Check if the old password is provided
+    if (!oldPassword || !newPassword) {
+      return res.status(400).send("Old and new passwords are required");
+    }
+
+    // Compare the old password with the stored hashed password
+    const isMatch = await bcrypt.compare(oldPassword, existingAdmin.password);
+    if (!isMatch) {
+      // If the old password does not match, send an error response
+      return res.status(401).send("Old password is incorrect");
+    }
+
+    // Hash the new password
+    const saltRounds = 5;
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    // Update the password in the database
+    existingAdmin.password = hashedPassword;
+    await existingAdmin.save();
+
+    // Send a success response
+    res.send("Password updated successfully");
+  } catch (error) {
+    // Handle other errors, such as missing details in the request
+    console.log(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+
 //ADMIN Login
 // server.post("/loginadmin", async (req, res) => {
 //   const { email, password } = req.body;
@@ -716,7 +760,7 @@ server.put("/updateuser", adminAuth, async (req, res) => {
   }
 });
 // All user
-server.get("/alluser", async (req, res) => {
+server.get("/alluser",commonAuth, async (req, res) => {
   try {
     // Step 1: Fetch all users
     const users = await RegisteruserModal.find();
@@ -1897,6 +1941,20 @@ server.put("/concern/:id", adminAuth, async (req, res) => {
   }
 });
 
+server.put('/notifications-seen', async (req, res) => {
+  try {
+    // Update all notifications with Status=false to Status=true
+    const updatedNotifications = await NotificationModel.updateMany(
+      { Status: false }, // Find all notifications where Status is false
+      { $set: { Status: true } } // Update the Status to true
+    );
+
+    res.status(200).json({ message: 'All notifications marked as seen', updatedNotifications });
+  } catch (error) {
+    console.error('Error updating notifications:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
 //  message All
 server.get("/message", async (req, res) => {
   try {
@@ -2176,6 +2234,56 @@ server.get("/docs", async (req, res) => {
   } catch (error) {
     console.log(error);
     res.send(error);
+  }
+});
+
+
+
+
+
+// count documents
+
+server.get("/adminDashboardlength", async (req, res) => {
+  try {
+    const attendanceCount = await AttendanceModel.countDocuments();
+    const callbackCount = await CallbackModel.countDocuments();
+    const saleCount = await SaleModel.countDocuments();
+    const transferCount = await TransferModel.countDocuments();
+    const projectCount = await ProjectsModel.countDocuments();
+
+    res.status(200).json({
+      attendance: attendanceCount,
+      callback: callbackCount,
+      sale: saleCount,
+      transfer: transferCount,
+      project: projectCount, 
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+
+server.get("/employeesdashboard/:id", async (req, res) => {
+  const userId = req.params.id;
+  try {
+    const attendanceCount = await AttendanceModel.countDocuments({ user_id: userId });
+    const callbackCount = await CallbackModel.countDocuments({ user_id: userId });
+    const saleCount = await SaleModel.countDocuments({ user_id: userId });
+    const transferCount = await TransferModel.countDocuments({ user_id: userId });
+    const projectsCount = await ProjectsModel.countDocuments({ assigneeId: userId });
+
+    res.status(200).json({
+      attendance: attendanceCount,
+      callback: callbackCount,
+      sale: saleCount,
+      transfer: transferCount,
+      project:projectsCount,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("Internal Server Error");
   }
 });
 
