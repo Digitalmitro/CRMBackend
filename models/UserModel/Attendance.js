@@ -12,11 +12,19 @@ const attendanceSchema = new mongoose.Schema(
         workingTime: { type: Number, default: 0 },
       },
     ],
+    shiftType:{
+      type:String,
+      enum:['Day', 'Night']
+    },
     totalWorkingTime: { type: Number, default: 0 },
     ip: { type: String },
     status: {
       type: String,
       enum: ["On Time", "Late"],
+    },
+    workStatus :{
+      type: String,
+      enum: ["half Day", "Full Day", "Over Time"],  
     },
     user_id: {
       type: mongoose.Schema.Types.ObjectId,

@@ -1618,61 +1618,222 @@ server.delete("/sale-1/:id", async (req, res) => {
 });
 
 // Create attendance  populate
+// server.post("/attendance", async (req, res) => {
+//   const {
+//     userName,
+//     userEmail,
+//     currentDate,
+//     punchin,
+//     punchOut,
+//     status,
+//     time,
+//     ip,
+//     user_id,
+//   } = req.body;
+//   console.log(
+//     "test",
+//     userName,
+//     userEmail,
+//     currentDate,
+//     punchin,
+//     punchOut,
+//     status,
+//     time,
+//     ip,
+//     user_id
+//   );
+//   try {
+//     // Create a new instance of AdvisorpackageModel
+//     const newPackage = new AttendanceModel({
+//       userName,
+//       userEmail,
+//       currentDate,
+//       punchin,
+//       punchOut,
+//       status,
+//       time,
+//       ip,
+//       user_id,
+//     });
+
+//     // Save the package to the database
+//     await newPackage.save();
+
+//     // Update the user's packages array
+//     await RegisteruserModal.findByIdAndUpdate(
+//       user_id,
+//       { $push: { attendance: newPackage._id } },
+//       { new: true }
+//     );
+
+//     // Send a success response
+//     res.send("attendance stored");
+//   } catch (error) {
+//     console.log(error);
+//     res.status(500).send("Internal Server Error");
+//   }
+// });
+
 server.post("/attendance", async (req, res) => {
-  const {
-    userName,
-    userEmail,
-    currentDate,
-    punchin,
-    punchOut,
-    status,
-    time,
-    ip,
-    user_id,
-  } = req.body;
-  console.log(
-    "test",
-    userName,
-    userEmail,
-    currentDate,
-    punchin,
-    punchOut,
-    status,
-    time,
-    ip,
-    user_id
-  );
   try {
-    // Create a new instance of AdvisorpackageModel
-    const newPackage = new AttendanceModel({
-      userName,
-      userEmail,
-      currentDate,
-      punchin,
-      punchOut,
-      status,
-      time,
-      ip,
+    const { userName, userEmail, currentDate, punches, shiftType, ip, status, user_id } = req.body;
+
+    let startDate, endDate;
+    // Determine the start and end dates based on shiftType
+    if (shiftType === "Day") {
+      startDate = new Date(new Date(currentDate).setHours(8, 0, 0, 0)); // 10:00 AM
+      endDate = new Date(new Date(currentDate).setHours(20, 0, 0, 0));   // 8:00 PM
+    } else if (shiftType === "Night") {
+      startDate = new Date(new Date(currentDate).setHours(20, 0, 0, 0)); // 8:00 PM
+      endDate = new Date(new Date(currentDate).setDate(new Date(currentDate).getDate() + 1));
+      endDate.setHours(8, 0, 0, 0); // 5:00 AM on the next day
+    } else {
+      return res.status(400).json({ message: "Invalid shift type" });
+    }
+    // Check if an attendance record exists for the same user_id within the shiftType time range
+    const existingAttendance = await AttendanceModel.findOne({
       user_id,
+      currentDate: {
+        $gte: startDate,
+        $lt: endDate
+      }
     });
-
-    // Save the package to the database
-    await newPackage.save();
-
-    // Update the user's packages array
-    await RegisteruserModal.findByIdAndUpdate(
-      user_id,
-      { $push: { attendance: newPackage._id } },
-      { new: true }
-    );
-
-    // Send a success response
-    res.send("attendance stored");
+    if (existingAttendance) {
+      // If attendance exists for the specified shiftType time range, update the punches array
+      existingAttendance.punches.push(...punches);
+      // existingAttendance.totalWorkingTime += punches.reduce((acc, punch) => acc + punch.workingTime, 0);
+      // existingAttendance.workStatus = workStatus; 
+      await existingAttendance.save();
+      return res.status(200).json(existingAttendance);
+    } else {
+      // If no record exists, create a new attendance record
+      // const totalWorkingTime = punches.reduce((acc, punch) => acc + punch.workingTime, 0);
+      const newAttendance = new AttendanceModel({
+        userName,
+        userEmail,
+        currentDate,
+        punches,
+        shiftType,
+        ip,
+        status,
+        user_id
+      });
+      const savedAttendance = await newAttendance.save();
+      return res.status(201).json(savedAttendance);
+    }
   } catch (error) {
-    console.log(error);
-    res.status(500).send("Internal Server Error");
+    console.error("Error creating or updating attendance record:", error);
+    res.status(500).json({ message: "Failed to create or update attendance record" });
   }
 });
+
+
+server.get("/attendance", async (req, res) => {
+  try {
+    const { user_id, currentDate } = req.query;
+
+    if (!user_id || !currentDate) {
+      return res.status(400).json({ message: "user_id and currentDate are required" });
+    }
+
+    // Convert currentDate to local time (IST)
+    const localCurrentDate = new Date(new Date(currentDate).toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    
+    // Determine the start and end of the day
+    const startDate = new Date(localCurrentDate.setHours(8, 0, 0, 0));  // 8:00 AM IST
+    const endDate = new Date(localCurrentDate.setHours(20, 0, 0, 0));   // 8:00 PM IST
+
+    // Find the attendance record for the specified user_id and currentDate within the day shift time range
+    const attendance = await AttendanceModel.findOne({
+      user_id,
+      currentDate: {
+        $gte: startDate,
+        $lt: endDate
+      }
+    });
+
+    if (!attendance) {
+      return res.status(404).json({ message: "Attendance record not found for the specified date and shift" });
+    }
+
+    // Return the attendance record
+    res.status(200).json(attendance);
+  } catch (error) {
+    console.error("Error retrieving attendance record:", error);
+    res.status(500).json({ message: "Failed to retrieve attendance record" });
+  }
+});
+
+const determineWorkStatus = (totalWorkingTime) => {
+  const hoursWorked = totalWorkingTime / 60; // Convert minutes to hours
+  if (hoursWorked >= 420 && hoursWorked <= 600) return "Full Day";
+  if (hoursWorked >= 240 && hoursWorked<=420) return "Half Day";
+  return "Over Time";
+};
+server.put("/punchout", async (req, res) => {
+  try {
+    const { user_id, currentDate, punchOut, shiftType } = req.body;
+    const localCurrentDate = new Date(new Date(currentDate).toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    let startDate, endDate;
+    console.log("localCurrentDate", localCurrentDate)
+
+    // Determine the start and end dates based on shiftType
+    if (shiftType === "Day") {
+      startDate = new Date(localCurrentDate.setHours(8, 0, 0, 0)); // 8:00 AM
+      endDate = new Date(localCurrentDate.setHours(20, 0, 0, 0));   // 8:00 PM
+    } else if (shiftType === "Night") {
+      startDate = new Date(localCurrentDate.setHours(20, 0, 0, 0)); // 8:00 PM
+      endDate = new Date(localCurrentDate.setDate(localCurrentDate.getDate() + 1));
+      endDate.setHours(8, 0, 0, 0); // 8:00 AM on the next day
+    } else {
+      return res.status(400).json({ message: "Invalid shift type" });
+    }
+console.log("startDate",startDate, endDate)
+    // Find the attendance record for the specified user_id and currentDate within shiftType time range
+    const attendance = await AttendanceModel.findOne({
+      user_id,
+      currentDate: {
+        $gte: startDate,
+        $lte: endDate
+      }
+    });
+
+    if (!attendance) {
+      return res.status(404).json({ message: "Attendance record not found for the specified date and shift" });
+    }
+
+    // Find the most recent punch-in object without a punch-out time
+    const lastPunchIn = attendance.punches.reverse().find(punch => !punch.punchOut);
+
+    if (!lastPunchIn) {
+      return res.status(400).json({ message: "No punch-in record found without a corresponding punch-out" });
+    }
+
+    // Update the last punch-in object with punch-out time
+    lastPunchIn.punchOut = new Date(punchOut);
+
+    // Calculate working time in minutes
+    const punchInTime = new Date(lastPunchIn.punchIn);
+    const punchOutTime = new Date(lastPunchIn.punchOut);
+    const workingTime = (punchOutTime - punchInTime) / (1000 * 60); // Convert milliseconds to minutes
+    lastPunchIn.workingTime = workingTime;
+
+    // Recalculate total working time
+    attendance.totalWorkingTime = attendance.punches.reduce((total, punch) => total + (punch.workingTime || 0), 0);
+
+    attendance.workStatus = determineWorkStatus(attendance.totalWorkingTime);
+    // Update the attendance record
+    await attendance.save();
+
+    res.status(200).json(attendance);
+  } catch (error) {
+    console.error("Error updating punch-out record:", error);
+    res.status(500).json({ message: "Failed to update punch-out record" });
+  }
+});
+
+
+
 //  Attendace Populate by user
 server.get("/attendance/:id", async (req, res) => {
   const ID = req.params.id;
