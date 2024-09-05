@@ -1845,7 +1845,7 @@ const determineWorkStatus = (totalWorkingTime) => {
 server.put("/punchout", async (req, res) => {
   try {
     const { user_id, currentDate, punchOut, shiftType } = req.body;
-    const localCurrentDate = new Date(new Date(currentDate).toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    const localCurrentDate = new Date(currentDate);
     let startDate, endDate;
     console.log("localCurrentDate", localCurrentDate);
 
