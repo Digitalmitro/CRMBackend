@@ -1680,16 +1680,18 @@ server.post("/attendance", async (req, res) => {
 
     let startDate, endDate;
     // Determine the start and end dates based on shiftType
+
     if (shiftType === "Day") {
-      startDate = new Date(new Date(currentDate).setHours(8, 0, 0, 0)); // 10:00 AM
-      endDate = new Date(new Date(currentDate).setHours(20, 0, 0, 0));   // 8:00 PM
+      startDate = new Date(new Date(currentDate).setHours(0, 0, 0, 0)); // 10:00 AM
+      endDate = new Date(new Date(currentDate).setHours(23, 59, 59, 59));   // 8:00 PM
     } else if (shiftType === "Night") {
-      startDate = new Date(new Date(currentDate).setHours(20, 0, 0, 0)); 
+      startDate = new Date(new Date(currentDate).setHours(0, 0, 0, 0)); 
       endDate = new Date(new Date(currentDate).setDate(new Date(currentDate).getDate() + 1));
-      endDate.setHours(8, 0, 0, 0); // 5:00 AM on the next day
+      endDate.setHours(23, 59, 59, 59); // 5:00 AM on the next day
     } else {
       return res.status(400).json({ message: "Invalid shift type" });
     }
+
     // Check if an attendance record exists for the same user_id within the shiftType time range
     const existingAttendance = await AttendanceModel.findOne({
       user_id,
@@ -1737,11 +1739,13 @@ server.get("/todays-attendence", async (req, res) => {
     }
 
     // Convert currentDate to local time (IST)
-    const localCurrentDate = new Date(new Date(currentDate).toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    // const localCurrentDate = new Date(new Date(currentDate).toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    const localCurrentDate = new Date(currentDate)
     
     // Determine the start and end of the day
-    const startDate = new Date(localCurrentDate.setHours(8, 0, 0, 0));  // 8:00 AM IST
-    const endDate = new Date(localCurrentDate.setHours(20, 0, 0, 0));   // 8:00 PM IST
+    const startDate = new Date(localCurrentDate.setHours(0, 0, 0, 0)); 
+    const endDate = new Date(localCurrentDate.setHours(23, 59, 59, 59));   
+    
 
     // Find the attendance record for the specified user_id and currentDate within the day shift time range
     const attendance = await AttendanceModel.findOne({
@@ -1765,10 +1769,11 @@ server.get("/todays-attendence", async (req, res) => {
 });
 
 const determineWorkStatus = (totalWorkingTime) => {
-  const hoursWorked = totalWorkingTime / 60; // Convert minutes to hours
-  if (hoursWorked >= 420 && hoursWorked <= 600) return "Full Day";
-  if (hoursWorked >= 200 && hoursWorked<=420) return "Half Day";
-  if (hoursWorked <200 ) return "Absent";
+  const minutesWorked = totalWorkingTime; // Convert minutes to hours
+  console.log("HOURS-->",minutesWorked)
+  if (minutesWorked >= 420 && minutesWorked <= 600) return "Full Day";
+  if (minutesWorked >= 200 && minutesWorked<=420) return "Half Day";
+  if (minutesWorked <200 ) return "Absent";
   
   return "Over Time";
 };
@@ -1846,12 +1851,12 @@ server.put("/punchout", async (req, res) => {
 
     // Determine the start and end dates based on shiftType
     if (shiftType === "Day") {
-      startDate = new Date(localCurrentDate.setHours(8, 0, 0, 0)); // 8:00 AM
-      endDate = new Date(localCurrentDate.setHours(20, 0, 0, 0));   // 8:00 PM
+      startDate = new Date(localCurrentDate.setHours(0, 0, 0, 0)); // 8:00 AM
+      endDate = new Date(localCurrentDate.setHours(23, 59, 59, 59));   // 8:00 PM
     } else if (shiftType === "Night") {
-      startDate = new Date(localCurrentDate.setHours(20, 0, 0, 0)); // 8:00 PM
+      startDate = new Date(localCurrentDate.setHours(0, 0, 0, 0)); // 8:00 PM
       endDate = new Date(localCurrentDate.setDate(localCurrentDate.getDate() + 1));
-      endDate.setHours(8, 0, 0, 0); // 8:00 AM on the next day
+      endDate.setHours(23, 59, 59, 59); // 8:00 AM on the next day
     } else {
       return res.status(400).json({ message: "Invalid shift type" });
     }
