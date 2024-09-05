@@ -1684,7 +1684,7 @@ server.post("/attendance", async (req, res) => {
       startDate = new Date(new Date(currentDate).setHours(8, 0, 0, 0)); // 10:00 AM
       endDate = new Date(new Date(currentDate).setHours(20, 0, 0, 0));   // 8:00 PM
     } else if (shiftType === "Night") {
-      startDate = new Date(new Date(currentDate).setHours(20, 0, 0, 0)); // 8:00 PM
+      startDate = new Date(new Date(currentDate).setHours(20, 0, 0, 0)); 
       endDate = new Date(new Date(currentDate).setDate(new Date(currentDate).getDate() + 1));
       endDate.setHours(8, 0, 0, 0); // 5:00 AM on the next day
     } else {
@@ -1728,7 +1728,7 @@ server.post("/attendance", async (req, res) => {
 });
 
 
-server.get("/attendance", async (req, res) => {
+server.get("/todays-attendence", async (req, res) => {
   try {
     const { user_id, currentDate } = req.query;
 
@@ -1767,15 +1767,82 @@ server.get("/attendance", async (req, res) => {
 const determineWorkStatus = (totalWorkingTime) => {
   const hoursWorked = totalWorkingTime / 60; // Convert minutes to hours
   if (hoursWorked >= 420 && hoursWorked <= 600) return "Full Day";
-  if (hoursWorked >= 240 && hoursWorked<=420) return "Half Day";
+  if (hoursWorked >= 200 && hoursWorked<=420) return "Half Day";
+  if (hoursWorked <200 ) return "Absent";
+  
   return "Over Time";
 };
+// server.put("/punchout", async (req, res) => {
+//   try {
+//     const { user_id, currentDate, punchOut, shiftType } = req.body;
+//     const localCurrentDate = new Date(new Date(currentDate).toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+//     let startDate, endDate;
+//     console.log("localCurrentDate", localCurrentDate)
+
+//     // Determine the start and end dates based on shiftType
+//     if (shiftType === "Day") {
+//       startDate = new Date(localCurrentDate.setHours(8, 0, 0, 0)); // 8:00 AM
+//       endDate = new Date(localCurrentDate.setHours(20, 0, 0, 0));   // 8:00 PM
+//     } else if (shiftType === "Night") {
+//       startDate = new Date(localCurrentDate.setHours(20, 0, 0, 0)); // 8:00 PM
+//       endDate = new Date(localCurrentDate.setDate(localCurrentDate.getDate() + 1));
+//       endDate.setHours(8, 0, 0, 0); // 8:00 AM on the next day
+//     } else {
+//       return res.status(400).json({ message: "Invalid shift type" });
+//     }
+// console.log("startDate",startDate, endDate)
+//     // Find the attendance record for the specified user_id and currentDate within shiftType time range
+//     const attendance = await AttendanceModel.findOne({
+//       user_id,
+//       currentDate: {
+//         $gte: startDate,
+//         $lte: endDate
+//       }
+//     });
+
+//     if (!attendance) {
+//       return res.status(404).json({ message: "Attendance record not found for the specified date and shift" });
+//     }
+
+//     // Find the most recent punch-in object without a punch-out time
+//     punchesArray = attendance.punches
+//     const lastPunchIn = punchesArray[punchesArray.length -1]
+
+//     if (!lastPunchIn || !lastPunchIn.punchOut) {
+//       return res.status(400).json({ message: "No punch-in record found without a corresponding punch-out" });
+//     }
+
+//     // Update the last punch-in object with punch-out time
+//     lastPunchIn.punchOut = new Date(punchOut);
+
+//     // Calculate working time in minutes
+//     const punchInTime = new Date(lastPunchIn.punchIn);
+//     const punchOutTime = new Date(lastPunchIn.punchOut);
+//     const workingTime = (punchOutTime - punchInTime) / (1000 * 60); // Convert milliseconds to minutes
+//     lastPunchIn.workingTime = workingTime;
+
+//     // Recalculate total working time
+//     attendance.totalWorkingTime = attendance.punches.reduce((total, punch) => total + (punch.workingTime || 0), 0);
+
+//     attendance.workStatus = determineWorkStatus(attendance.totalWorkingTime);
+//     console.log("attendance", attendance)
+//     // Update the attendance record
+//     await attendance.save();
+
+//     res.status(200).json(attendance);
+//   } catch (error) {
+//     console.error("Error updating punch-out record:", error);
+//     res.status(500).json({ message: "Failed to update punch-out record" });
+//   }
+// });
+
+
 server.put("/punchout", async (req, res) => {
   try {
     const { user_id, currentDate, punchOut, shiftType } = req.body;
     const localCurrentDate = new Date(new Date(currentDate).toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
     let startDate, endDate;
-    console.log("localCurrentDate", localCurrentDate)
+    console.log("localCurrentDate", localCurrentDate);
 
     // Determine the start and end dates based on shiftType
     if (shiftType === "Day") {
@@ -1788,7 +1855,8 @@ server.put("/punchout", async (req, res) => {
     } else {
       return res.status(400).json({ message: "Invalid shift type" });
     }
-console.log("startDate",startDate, endDate)
+    console.log("startDate", startDate, "endDate", endDate);
+
     // Find the attendance record for the specified user_id and currentDate within shiftType time range
     const attendance = await AttendanceModel.findOne({
       user_id,
@@ -1802,11 +1870,12 @@ console.log("startDate",startDate, endDate)
       return res.status(404).json({ message: "Attendance record not found for the specified date and shift" });
     }
 
-    // Find the most recent punch-in object without a punch-out time
-    const lastPunchIn = attendance.punches.reverse().find(punch => !punch.punchOut);
+    // Find the last punch-in object without a punch-out time
+    const punches = attendance.punches;
+    const lastPunchIn = punches[punches.length - 1]; // Get the last object in the array
 
-    if (!lastPunchIn) {
-      return res.status(400).json({ message: "No punch-in record found without a corresponding punch-out" });
+    if (!lastPunchIn || lastPunchIn.punchOut) {
+      return res.status(400).json({ message: "No valid punch-in record found without a corresponding punch-out" });
     }
 
     // Update the last punch-in object with punch-out time
@@ -1819,9 +1888,11 @@ console.log("startDate",startDate, endDate)
     lastPunchIn.workingTime = workingTime;
 
     // Recalculate total working time
-    attendance.totalWorkingTime = attendance.punches.reduce((total, punch) => total + (punch.workingTime || 0), 0);
+    attendance.totalWorkingTime = punches.reduce((total, punch) => total + (punch.workingTime || 0), 0);
 
     attendance.workStatus = determineWorkStatus(attendance.totalWorkingTime);
+    console.log("attendance", attendance);
+
     // Update the attendance record
     await attendance.save();
 
@@ -1996,18 +2067,12 @@ server.get("/employees", async (req, res) => {
 
 // // Create message populate
 server.post("/concern", async (req, res) => {
-  const { name, email, message, date, status, punchType, user_id } = req.body;
+  const { name, email, message, punchInTime, punchOutTime, currenDate, status, punchType, user_id } = req.body;
 
   try {
     // Create a new instance of AdvisorpackageModel
     const newPackage = new ConcernModel({
-      name,
-      email,
-      message,
-      date,
-      punchType,
-      status,
-      user_id,
+      name, email, message, punchInTime, punchOutTime, currenDate, status, punchType, user_id
     });
 
     // Save the package to the database

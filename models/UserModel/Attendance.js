@@ -24,7 +24,7 @@ const attendanceSchema = new mongoose.Schema(
     },
     workStatus :{
       type: String,
-      enum: ["half Day", "Full Day", "Over Time"],  
+      enum: ["half Day", "Full Day", "Over Time", "Absent"],  
     },
     user_id: {
       type: mongoose.Schema.Types.ObjectId,

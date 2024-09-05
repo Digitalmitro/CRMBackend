@@ -6,8 +6,11 @@ const concernSchema = new mongoose.Schema({
  
     name: { type: String },
     email: { type: String },
+    ConcernDate: { type: String },
+    ActualPunchIn: { type: String },
+    ActualPunchOut: { type: String },
     message: { type: String },
-    date: { type: String },
+    currenDate: { type: String },
     status: { type: String },
     punchType: { type: String },
     
