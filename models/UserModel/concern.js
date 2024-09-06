@@ -12,6 +12,7 @@ const concernSchema = new mongoose.Schema({
     message: { type: String },
     currenDate: { type: String },
     status: { type: String },
+    shiftType: { type: String },
     punchType: { type: String },
     
   user_id: {

@@ -1777,69 +1777,6 @@ const determineWorkStatus = (totalWorkingTime) => {
   
   return "Over Time";
 };
-// server.put("/punchout", async (req, res) => {
-//   try {
-//     const { user_id, currentDate, punchOut, shiftType } = req.body;
-//     const localCurrentDate = new Date(new Date(currentDate).toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-//     let startDate, endDate;
-//     console.log("localCurrentDate", localCurrentDate)
-
-//     // Determine the start and end dates based on shiftType
-//     if (shiftType === "Day") {
-//       startDate = new Date(localCurrentDate.setHours(8, 0, 0, 0)); // 8:00 AM
-//       endDate = new Date(localCurrentDate.setHours(20, 0, 0, 0));   // 8:00 PM
-//     } else if (shiftType === "Night") {
-//       startDate = new Date(localCurrentDate.setHours(20, 0, 0, 0)); // 8:00 PM
-//       endDate = new Date(localCurrentDate.setDate(localCurrentDate.getDate() + 1));
-//       endDate.setHours(8, 0, 0, 0); // 8:00 AM on the next day
-//     } else {
-//       return res.status(400).json({ message: "Invalid shift type" });
-//     }
-// console.log("startDate",startDate, endDate)
-//     // Find the attendance record for the specified user_id and currentDate within shiftType time range
-//     const attendance = await AttendanceModel.findOne({
-//       user_id,
-//       currentDate: {
-//         $gte: startDate,
-//         $lte: endDate
-//       }
-//     });
-
-//     if (!attendance) {
-//       return res.status(404).json({ message: "Attendance record not found for the specified date and shift" });
-//     }
-
-//     // Find the most recent punch-in object without a punch-out time
-//     punchesArray = attendance.punches
-//     const lastPunchIn = punchesArray[punchesArray.length -1]
-
-//     if (!lastPunchIn || !lastPunchIn.punchOut) {
-//       return res.status(400).json({ message: "No punch-in record found without a corresponding punch-out" });
-//     }
-
-//     // Update the last punch-in object with punch-out time
-//     lastPunchIn.punchOut = new Date(punchOut);
-
-//     // Calculate working time in minutes
-//     const punchInTime = new Date(lastPunchIn.punchIn);
-//     const punchOutTime = new Date(lastPunchIn.punchOut);
-//     const workingTime = (punchOutTime - punchInTime) / (1000 * 60); // Convert milliseconds to minutes
-//     lastPunchIn.workingTime = workingTime;
-
-//     // Recalculate total working time
-//     attendance.totalWorkingTime = attendance.punches.reduce((total, punch) => total + (punch.workingTime || 0), 0);
-
-//     attendance.workStatus = determineWorkStatus(attendance.totalWorkingTime);
-//     console.log("attendance", attendance)
-//     // Update the attendance record
-//     await attendance.save();
-
-//     res.status(200).json(attendance);
-//   } catch (error) {
-//     console.error("Error updating punch-out record:", error);
-//     res.status(500).json({ message: "Failed to update punch-out record" });
-//   }
-// });
 
 
 server.put("/punchout", async (req, res) => {
@@ -1851,12 +1788,12 @@ server.put("/punchout", async (req, res) => {
 
     // Determine the start and end dates based on shiftType
     if (shiftType === "Day") {
-      startDate = new Date(localCurrentDate.setHours(0, 0, 0, 0)); // 8:00 AM
-      endDate = new Date(localCurrentDate.setHours(23, 59, 59, 59));   // 8:00 PM
+      startDate = new Date(localCurrentDate.setHours(0, 0, 0, 0));
+      endDate = new Date(localCurrentDate.setHours(23, 59, 59, 59));  
     } else if (shiftType === "Night") {
-      startDate = new Date(localCurrentDate.setHours(0, 0, 0, 0)); // 8:00 PM
+      startDate = new Date(localCurrentDate.setHours(0, 0, 0, 0)); 
       endDate = new Date(localCurrentDate.setDate(localCurrentDate.getDate() + 1));
-      endDate.setHours(23, 59, 59, 59); // 8:00 AM on the next day
+      endDate.setHours(23, 59, 59, 59); 
     } else {
       return res.status(400).json({ message: "Invalid shift type" });
     }
@@ -1908,7 +1845,157 @@ server.put("/punchout", async (req, res) => {
   }
 });
 
+const checkIfLate = (punchInDate, shiftType) => {
+  const momentPunchInDate = moment(punchInDate); // current punch-in time using moment
 
+  if (shiftType === 'Day') {
+    const lateStart = momentPunchInDate.startOf('day').hours(10).minutes(40).seconds(0); // 10:40 AM same day
+    return momentPunchInDate.isAfter(lateStart);
+  } else if (shiftType === 'Night') {
+    const lateStart = momentPunchInDate.startOf('day').hours(20).minutes(40).seconds(0); // 8:40 PM same day
+    const lateEnd = momentPunchInDate.add(1, 'day').startOf('day').hours(8).minutes(40).seconds(0); // 8:40 AM next day
+
+    // Check if punchInDate falls between lateStart and lateEnd (spanning two days)
+    return momentPunchInDate.isAfter(lateStart) || momentPunchInDate.isBefore(lateEnd);
+  }
+
+  return false;
+};
+
+
+server.put("/attendance-approval", async (req, res) => {
+  try {
+    const { user_id, concernDate, punchIn, punchOut, shiftType } = req.body;
+
+    // Validate input
+    if (!user_id || !concernDate || !punchIn || !punchOut || !shiftType) {
+      return res.status(400).json({ message: "Invalid input" });
+    }
+
+    // Convert dates to UTC
+    const punchInTime = new Date(punchIn);
+    const punchOutTime = new Date(punchOut);
+
+    if (isNaN(punchInTime) || isNaN(punchOutTime)) {
+      return res.status(400).json({ message: "Invalid date format" });
+    }
+
+    // Determine the date range based on shiftType
+    let startDate, endDate;
+    const localconcernDate = new Date(concernDate);
+    if (shiftType === "Day") {
+      startDate = new Date(localconcernDate.setHours(0, 0, 0, 0)); // Start of the day
+      endDate = new Date(localconcernDate.setHours(23, 59, 59, 999)); // End of the day
+    } else if (shiftType === "Night") {
+      startDate = new Date(localconcernDate.setHours(0, 0, 0, 0)); // Start of the day
+      endDate = new Date(localconcernDate.setDate(localconcernDate.getDate() + 1)); // Next day
+      endDate.setHours(19, 59, 59, 999); // End of the next day
+    } else {
+      return res.status(400).json({ message: "Invalid shift type" });
+    }
+
+    // Find the attendance record for the specified user_id and concernDate
+    const attendance = await AttendanceModel.findOne({
+      user_id,
+      concernDate: {
+        $gte: startDate,
+        $lte: endDate
+      }
+    });
+
+    if (!attendance) {
+      return res.status(404).json({ message: "Attendance record not found" });
+    }
+
+    // Replace punches with the new punchIn and punchOut
+    attendance.punches = [{
+      punchIn: punchInTime,
+      punchOut: punchOutTime,
+      workingTime: (punchOutTime - punchInTime) / (1000 * 60) // Convert milliseconds to minutes
+    }];
+
+    // Calculate total working time
+    attendance.totalWorkingTime = attendance.punches.reduce((total, punch) => {
+      return total + (punch.workingTime || 0);
+    }, 0);
+
+    // Determine work status
+    attendance.workStatus = determineWorkStatus(attendance.totalWorkingTime);
+
+    // Determine if the punch-in time is late based on shiftType
+    const isLate = checkIfLate(punchInTime, shiftType);
+    attendance.status = isLate ? 'Late' : 'On Time';
+
+    // Save the updated record
+    await attendance.save();
+
+    // Respond with the updated attendance record
+    res.status(200).json(attendance);
+  } catch (error) {
+    console.error("Error updating punches:", error);
+    res.status(500).json({ message: "Failed to update punches" });
+  }
+});
+
+// server.put("/attendence-approval", async (req, res) => {
+//   try {
+//     const { user_id, currentDate, punchIn, punchOut } = req.body;
+
+//     // Validate input
+//     if (!user_id || !currentDate || !punchIn || !punchOut) {
+//       return res.status(400).json({ message: "Invalid input" });
+//     }
+
+//     // Convert dates to UTC
+//     const punchInTime = new Date(punchIn);
+//     const punchOutTime = new Date(punchOut);
+
+//     if (isNaN(punchInTime) || isNaN(punchOutTime)) {
+//       return res.status(400).json({ message: "Invalid date format" });
+//     }
+
+//     const localCurrentDate = new Date(currentDate);
+//     const startDate = new Date(localCurrentDate.setHours(0, 0, 0, 0));
+//     const endDate = new Date(localCurrentDate.setHours(23, 59, 59, 999));
+
+//     // Find the attendance record for the specified user_id and currentDate
+//     const attendance = await AttendanceModel.findOne({
+//       user_id,
+//       currentDate: {
+//         $gte: startDate,
+//         $lte: endDate
+//       }
+//     });
+
+//     if (!attendance) {
+//       return res.status(404).json({ message: "Attendance record not found" });
+//     }
+
+//     // Replace punches with the new punchIn and punchOut
+//     attendance.punches = [{
+//       punchIn: punchInTime,
+//       punchOut: punchOutTime,
+//       workingTime: (punchOutTime - punchInTime) / (1000 * 60) // Convert milliseconds to minutes
+//     }];
+
+//     // Calculate total working time
+//     attendance.totalWorkingTime = attendance.punches.reduce((total, punch) => {
+//       return total + (punch.workingTime || 0);
+//     }, 0);
+
+//     // Update work status based on total working time
+//     attendance.workStatus = determineWorkStatus(attendance.totalWorkingTime);
+
+//     // Save the updated record
+//     await attendance.save();
+
+//     // Respond with the updated attendance record
+//     res.status(200).json(attendance);
+//   } catch (error) {
+//     console.error("Error updating punches:", error);
+//     res.status(500).json({ message: "Failed to update punches" });
+//   }
+// });
 
 //  Attendace Populate by user
 server.get("/attendance/:id", async (req, res) => {
@@ -2072,12 +2159,12 @@ server.get("/employees", async (req, res) => {
 
 // // Create message populate
 server.post("/concern", async (req, res) => {
-  const { name, email, message, punchInTime, punchOutTime, currenDate, status, punchType, user_id } = req.body;
+  const { name, email,ConcernDate, ActualPunchIn, ActualPunchOut,message, currenDate, status, punchType,shiftType, user_id } = req.body;
 
   try {
     // Create a new instance of AdvisorpackageModel
     const newPackage = new ConcernModel({
-      name, email, message, punchInTime, punchOutTime, currenDate, status, punchType, user_id
+      name, email,ConcernDate, ActualPunchIn, ActualPunchOut,message, currenDate, status, punchType,shiftType, user_id 
     });
 
     // Save the package to the database
