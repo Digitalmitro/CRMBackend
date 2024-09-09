@@ -449,11 +449,11 @@ server.post("/registeradmin", async (req, res) => {
 
   try {
     // Check if the email already exists in the database
-    const existingAdvisor = await RegisteradminModal.findOne({ email });
+    const existingAdvisor = await RegisteradminModal.findOne();
 
     if (existingAdvisor) {
       // If email already exists, send an error response
-      res.status(400).send("Email already exists");
+      res.status(400).send("Admin Exists!");
     } else {
       // Hash the password
       bcrypt.hash(password, 5, async (err, hash) => {
@@ -484,7 +484,7 @@ server.post("/registeradmin", async (req, res) => {
 });
 
 
-server.put("/updateadminpassword", async (req, res) => {
+server.put("/updateadminpassword", adminAuth, async (req, res) => {
   const { email, oldPassword, newPassword } = req.body;
 
   try {
