@@ -43,7 +43,7 @@ const registeruserSchema = mongoose.Schema({
   image: { type: mongoose.Schema.Types.ObjectId, ref: "image" },
   notes: { type: mongoose.Schema.Types.ObjectId, ref: "notes" },
 
-});
+},{timestamps:true});
 
 registeruserSchema.methods.generateAuthToken = async function () {
   try {

@@ -20,7 +20,7 @@ const saleSchema = new mongoose.Schema({
     ref: "register user",
     required: true,
   },
-});
+},{timestamps:true});
 
 const SaleModel = mongoose.model("sale", saleSchema);
 

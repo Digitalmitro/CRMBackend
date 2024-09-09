@@ -5,7 +5,7 @@ const docsSchema = new mongoose.Schema({
   assigneeName: { type: String },
   projectName: { type: String },
   docs: { type: String },
-});
+},{timestamps:true});
 
 const DocsModel = mongoose.model("documents", docsSchema);
 

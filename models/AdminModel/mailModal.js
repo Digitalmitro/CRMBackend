@@ -32,7 +32,7 @@ const mailSchema = new mongoose.Schema({
     SmoMailLink:{type: [String]},
 
     user_id: {type: mongoose.Schema.Types.ObjectId, ref: 'register admin', required: true}
-});
+},{timestamps:true});
 
 const MailModel = mongoose.model("mail", mailSchema);
 

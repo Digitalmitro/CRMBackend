@@ -37,6 +37,7 @@ const {
 const adminAuth = require("./middleware/adminAuth");
 const commonAuth = require("./middleware/commonAuth");
 const userAuth = require("./middleware/userAuth");
+const SessionsModel = require("./models/SessionsModel ");
 
 const server = express();
 //to avoid cors error//
@@ -575,7 +576,7 @@ server.put("/updateadminpassword", adminAuth, async (req, res) => {
 // });
 
 // NEW ADMIN LOGIN
-server.post("/loginadmin", async (req, res) => {
+server.post("/loginadmin",  async (req, res) => {
   try {
     const logEmail = req.body.email;
     const logPass = req.body.password;
@@ -602,7 +603,13 @@ server.post("/loginadmin", async (req, res) => {
             phone: adminFound.phone,
             _id: adminFound._id,
           },
+
         });
+        // const session = new SessionsModel({
+        //   userId: adminFound._id,
+        //   token: token
+        // });
+        // await session.save();
       } else {
         res
           .status(400)
@@ -618,6 +625,14 @@ server.post("/loginadmin", async (req, res) => {
   }
 });
 
+server.post("/logout", async (req, res) => {
+  try {
+    await Session.deleteMany({ userId: req.user._id });
+    res.status(200).json({ message: "Logged out" });
+  } catch (error) {
+    res.status(500).json({ message: "Error logging out", success: false });
+  }
+});
 // Check Token API
 server.get("/check-admin-token", adminAuth, async (req, res) => {
   try {
@@ -2009,6 +2024,28 @@ server.get("/attendance/:id", async (req, res) => {
   }
 });
 
+
+server.get("/attendancelist/:id", async (req, res) => {
+  const ID = req.params.id;
+  try {
+    const data = await AttendanceModel.find({user_id: ID})
+    if(data){
+      res.status(200).json(
+        {
+          message:"data Collected Successuflly ",
+          data: data
+        }
+      );
+    }else{
+      res.statua(404).json("no Data Found")
+    }
+
+  
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
 //  All Attendace
 server.get("/attendance", async (req, res) => {
   try {
