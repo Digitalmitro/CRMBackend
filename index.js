@@ -2508,8 +2508,8 @@ server.get("/message/:user_id", async (req, res) => {
 server.post("/notepad", async (req, res) => {
   const { notes, user_id } = req.body;
 
-  if (!user_id || !notes) {
-    return res.status(400).send("Missing user_id or notes in request body");
+  if (!user_id) {
+    return res.status(400).send("Missing user_id in request body");
   }
 
   try {
