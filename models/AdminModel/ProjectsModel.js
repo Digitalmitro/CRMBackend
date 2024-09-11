@@ -16,7 +16,7 @@ const projectSchema = new mongoose.Schema({
   projectName: { type: String },
   tasks: [taskSchema],
   createdAt: { type: Date },
-});
+},{timestamps:true});
 const ProjectsModel = mongoose.model("projects", projectSchema);
 
 module.exports = { ProjectsModel };

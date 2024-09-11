@@ -20,7 +20,7 @@ const transferSchema = new mongoose.Schema({
     ref: "register user",
     required: true,
   },
-});
+},{timestamps:true});
 
 const TransferModel = mongoose.model("transfer", transferSchema);
 

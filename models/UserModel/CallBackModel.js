@@ -18,7 +18,7 @@ const callbackSchema = new mongoose.Schema({
     ref: "register user",
     required: true,
   },
-});
+},{timestamps:true});
 
 const CallbackModel = mongoose.model("callback", callbackSchema);
 

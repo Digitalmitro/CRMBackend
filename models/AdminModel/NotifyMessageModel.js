@@ -7,7 +7,7 @@ const msgnotificationSchema = new mongoose.Schema({
    message: [String],
    senderId : {type:String},
    receiverId : {type:String}
-});
+},{timestamps:true});
 
 const NotifyMessageModel = mongoose.model("notifymessage", msgnotificationSchema);
 

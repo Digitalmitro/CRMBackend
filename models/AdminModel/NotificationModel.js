@@ -5,7 +5,7 @@ const notificationSchema = new mongoose.Schema({
    Date :  {type: String},
    Status :  {type: Boolean},
    message: {type: String}
-});
+},{timestamps:true});
 
 const NotificationModel = mongoose.model("notification", notificationSchema);
 
