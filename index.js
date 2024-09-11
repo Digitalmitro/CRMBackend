@@ -2471,36 +2471,29 @@ server.get("/message/:user_id", async (req, res) => {
 server.post("/notepad", async (req, res) => {
   const { notes, user_id } = req.body;
 
+  if (!user_id || !notes) {
+    return res.status(400).send("Missing user_id or notes in request body");
+  }
+
   try {
-    // Check if the user already has a notes document
-    const existingNotes = await NotesModel.findOne({ user_id });
+    // Upsert logic: Find an existing notes document or create a new one
+    const updatedNotes = await NotesModel.findOneAndUpdate(
+      { user_id },
+      { $set: { notes } },
+      { new: true, upsert: true } // Create a new document if not found (upsert)
+    );
 
-    if (!existingNotes) {
-      // If no existing document, create a new one
-      const newNotes = new NotesModel({
-        notes,
-        user_id,
-      });
-
-      // Save the new document to the database
-      await newNotes.save();
-
-      // Update the user's notes field with the new notes document ID
-      await RegisteruserModal.findByIdAndUpdate(
-        user_id,
-        { notes: newNotes._id },
-        { new: true }
-      );
-    } else {
-      // If an existing document is found, update the notes
-      existingNotes.notes = notes;
-      await existingNotes.save();
-    }
+    // Update the user's notes field with the updated notes document ID
+    await RegisteruserModal.findByIdAndUpdate(
+      user_id,
+      { notes: updatedNotes._id },
+      { new: true }
+    );
 
     // Send a success response
     res.send("Notes added/updated successfully");
   } catch (error) {
-    console.log(error);
+    console.error(error);
     res.status(500).send("Internal Server Error");
   }
 });
