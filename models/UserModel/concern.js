@@ -13,7 +13,7 @@ const concernSchema = new mongoose.Schema({
     currenDate: { type: String },
     status: { type: String },
     shiftType: { type: String },
-    punchType: { type: String },
+    concernType: { type: String },
     
   user_id: {
     type: mongoose.Schema.Types.ObjectId,

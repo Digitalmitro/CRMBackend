@@ -174,6 +174,19 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Real-time notification event listener
+  socket.on("newConcernNotification", (notification) => {
+    console.log("Received newConcernNotification event:", notification);
+    console.log("USERS ==>", users);
+    const adminSocketId = users["admin"];
+    if (adminSocketId) {
+      console.log("Sending notification to admin:", adminSocketId);
+      io.to(adminSocketId).emit("newNotification", notification);
+    } else {
+      console.log("Admin is not connected");
+    }
+  });
+
   // Handle disconnection events
   socket.on("disconnect", () => {
     console.log("Client disconnected");
@@ -484,7 +497,6 @@ server.post("/registeradmin", async (req, res) => {
   }
 });
 
-
 server.put("/updateadminpassword", adminAuth, async (req, res) => {
   const { email, oldPassword, newPassword } = req.body;
 
@@ -525,7 +537,6 @@ server.put("/updateadminpassword", adminAuth, async (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 });
-
 
 //ADMIN Login
 // server.post("/loginadmin", async (req, res) => {
@@ -576,7 +587,7 @@ server.put("/updateadminpassword", adminAuth, async (req, res) => {
 // });
 
 // NEW ADMIN LOGIN
-server.post("/loginadmin",  async (req, res) => {
+server.post("/loginadmin", async (req, res) => {
   try {
     const logEmail = req.body.email;
     const logPass = req.body.password;
@@ -603,7 +614,6 @@ server.post("/loginadmin",  async (req, res) => {
             phone: adminFound.phone,
             _id: adminFound._id,
           },
-
         });
         // const session = new SessionsModel({
         //   userId: adminFound._id,
@@ -775,7 +785,7 @@ server.put("/updateuser", adminAuth, async (req, res) => {
   }
 });
 // All user
-server.get("/alluser",commonAuth, async (req, res) => {
+server.get("/alluser", commonAuth, async (req, res) => {
   try {
     // Step 1: Fetch all users
     const users = await RegisteruserModal.find();
@@ -1181,6 +1191,47 @@ server.post("/callbacks", async (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 });
+
+server.post("/callback-to-sales", async (req, res) => {
+  const { callback_id, saleData } = req.body;
+
+  try {
+    // Delete the document from Callback collection based on callback_id
+    const deletedCallback = await CallbackModel.findByIdAndDelete(callback_id);
+
+    if (!deletedCallback) {
+      return res
+        .status(404)
+        .send("Callback not found for the provided callback_id");
+    }
+
+    // Extract the user_id from the deletedCallback document
+    const user_id = deletedCallback.user_id;
+
+    // Remove the _id field from saleData to avoid conflicts during document creation
+    delete saleData._id;
+
+    // Insert a new sale document (always create, no update)
+    const newSale = await SaleModel.create(saleData);
+
+    // Push the new sale ID to the user's sales array
+    await RegisteruserModal.findByIdAndUpdate(
+      user_id,
+      { $push: { sale: newSale._id } }, // Associate the new sale with the user
+      { new: true }
+    );
+
+    // Send success response
+    res.send({
+      message: "Callback deleted and sales record created successfully",
+      sale: newSale,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
 //  callBacks Populate by user
 server.get("/callback-user/:id", async (req, res) => {
   try {
@@ -1349,6 +1400,81 @@ server.post("/transfer", async (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 });
+
+server.post("/transfer-to-sales", async (req, res) => {
+  const { transfer_id, saleData } = req.body;
+
+  try {
+    // Delete the document from Transfer collection based on transfer_id
+    const deletedTransfer = await TransferModel.findByIdAndDelete(transfer_id);
+
+    if (!deletedTransfer) {
+      return res
+        .status(404)
+        .send("Transfer not found for the provided transfer_id");
+    }
+
+    // Remove the _id field from saleData to prevent conflicts when creating a new document
+    delete saleData._id;
+
+    // Insert a new sale document (no update)
+    const newSale = await SaleModel.create(saleData);
+
+    // Push the sale ID to the user's sales array
+    await RegisteruserModal.findOneAndUpdate(
+      { user_id: saleData.user_id },
+      { $push: { sale: newSale._id } }, // Associate the new sale with the user
+      { new: true }
+    );
+
+    // Send success response
+    res.send({
+      message: "Transfer deleted and sales record created successfully",
+      sale: newSale,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+server.post("/transfer-to-callback", async (req, res) => {
+  const { transfer_id, callbackData } = req.body;
+
+  try {
+    // Delete the document from Transfer collection based on transfer_id
+    const deletedTransfer = await TransferModel.findByIdAndDelete(transfer_id);
+
+    if (!deletedTransfer) {
+      return res
+        .status(404)
+        .send("Transfer not found for the provided transfer_id");
+    }
+
+    // Remove the _id field from saleData to prevent conflicts when creating a new document
+    delete callbackData._id;
+
+    // Insert a new sale document (no update)
+    const newCallback = await CallbackModel.create(callbackData);
+
+    // Push the sale ID to the user's sales array
+    await RegisteruserModal.findOneAndUpdate(
+      { user_id: callbackData.user_id },
+      { $push: { callback: newCallback._id } }, // Associate the new sale with the user
+      { new: true }
+    );
+
+    // Send success response
+    res.send({
+      message: "Transfer deleted and callback record created successfully",
+      callback: newCallback,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
 //  transfer Populate by user
 server.get("/transfer-user/:id", async (req, res) => {
   const ID = req.params.id;
@@ -1380,7 +1506,7 @@ server.get("/transfer-user/:id", async (req, res) => {
 //  all created transfer
 server.get("/alltransfer", async (req, res) => {
   try {
-    const data = await TransferModel.find();
+    const data = await TransferModel.find().sort({ createdAt: -1 });
     res.send(data);
   } catch (error) {
     console.log(error);
@@ -1691,17 +1817,28 @@ server.delete("/sale-1/:id", async (req, res) => {
 
 server.post("/attendance", async (req, res) => {
   try {
-    const { userName, userEmail, currentDate, punches, shiftType, ip, status, user_id } = req.body;
+    const {
+      userName,
+      userEmail,
+      currentDate,
+      punches,
+      shiftType,
+      ip,
+      status,
+      user_id,
+    } = req.body;
 
     let startDate, endDate;
     // Determine the start and end dates based on shiftType
 
     if (shiftType === "Day") {
       startDate = new Date(new Date(currentDate).setHours(0, 0, 0, 0)); // 10:00 AM
-      endDate = new Date(new Date(currentDate).setHours(23, 59, 59, 59));   // 8:00 PM
+      endDate = new Date(new Date(currentDate).setHours(23, 59, 59, 59)); // 8:00 PM
     } else if (shiftType === "Night") {
-      startDate = new Date(new Date(currentDate).setHours(0, 0, 0, 0)); 
-      endDate = new Date(new Date(currentDate).setDate(new Date(currentDate).getDate() + 1));
+      startDate = new Date(new Date(currentDate).setHours(0, 0, 0, 0));
+      endDate = new Date(
+        new Date(currentDate).setDate(new Date(currentDate).getDate() + 1)
+      );
       endDate.setHours(23, 59, 59, 59); // 5:00 AM on the next day
     } else {
       return res.status(400).json({ message: "Invalid shift type" });
@@ -1712,14 +1849,14 @@ server.post("/attendance", async (req, res) => {
       user_id,
       currentDate: {
         $gte: startDate,
-        $lt: endDate
-      }
+        $lt: endDate,
+      },
     });
     if (existingAttendance) {
       // If attendance exists for the specified shiftType time range, update the punches array
       existingAttendance.punches.push(...punches);
       // existingAttendance.totalWorkingTime += punches.reduce((acc, punch) => acc + punch.workingTime, 0);
-      // existingAttendance.workStatus = workStatus; 
+      // existingAttendance.workStatus = workStatus;
       await existingAttendance.save();
       return res.status(200).json(existingAttendance);
     } else {
@@ -1733,46 +1870,53 @@ server.post("/attendance", async (req, res) => {
         shiftType,
         ip,
         status,
-        user_id
+        user_id,
       });
       const savedAttendance = await newAttendance.save();
       return res.status(201).json(savedAttendance);
     }
   } catch (error) {
     console.error("Error creating or updating attendance record:", error);
-    res.status(500).json({ message: "Failed to create or update attendance record" });
+    res
+      .status(500)
+      .json({ message: "Failed to create or update attendance record" });
   }
 });
-
 
 server.get("/todays-attendence", async (req, res) => {
   try {
     const { user_id, currentDate } = req.query;
 
     if (!user_id || !currentDate) {
-      return res.status(400).json({ message: "user_id and currentDate are required" });
+      return res
+        .status(400)
+        .json({ message: "user_id and currentDate are required" });
     }
 
     // Convert currentDate to local time (IST)
     // const localCurrentDate = new Date(new Date(currentDate).toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-    const localCurrentDate = new Date(currentDate)
-    
+    const localCurrentDate = new Date(currentDate);
+
     // Determine the start and end of the day
-    const startDate = new Date(localCurrentDate.setHours(0, 0, 0, 0)); 
-    const endDate = new Date(localCurrentDate.setHours(23, 59, 59, 59));   
-    
+    const startDate = new Date(localCurrentDate.setHours(0, 0, 0, 0));
+    const endDate = new Date(localCurrentDate.setHours(23, 59, 59, 59));
 
     // Find the attendance record for the specified user_id and currentDate within the day shift time range
     const attendance = await AttendanceModel.findOne({
       user_id,
       currentDate: {
         $gte: startDate,
-        $lt: endDate
-      }
+        $lt: endDate,
+      },
     });
 
     if (!attendance) {
-      return res.status(404).json({ message: "Attendance record not found for the specified date and shift" });
+      return res
+        .status(404)
+        .json({
+          message:
+            "Attendance record not found for the specified date and shift",
+        });
     }
 
     // Return the attendance record
@@ -1785,14 +1929,13 @@ server.get("/todays-attendence", async (req, res) => {
 
 const determineWorkStatus = (totalWorkingTime) => {
   const minutesWorked = totalWorkingTime; // Convert minutes to hours
-  console.log("HOURS-->",minutesWorked)
+  console.log("HOURS-->", minutesWorked);
   if (minutesWorked >= 420 && minutesWorked <= 600) return "Full Day";
-  if (minutesWorked >= 200 && minutesWorked<=420) return "Half Day";
-  if (minutesWorked <200 ) return "Absent";
-  
+  if (minutesWorked >= 200 && minutesWorked <= 420) return "Half Day";
+  if (minutesWorked < 200) return "Absent";
+
   return "Over Time";
 };
-
 
 server.put("/punchout", async (req, res) => {
   try {
@@ -1804,11 +1947,13 @@ server.put("/punchout", async (req, res) => {
     // Determine the start and end dates based on shiftType
     if (shiftType === "Day") {
       startDate = new Date(localCurrentDate.setHours(0, 0, 0, 0));
-      endDate = new Date(localCurrentDate.setHours(23, 59, 59, 59));  
+      endDate = new Date(localCurrentDate.setHours(23, 59, 59, 59));
     } else if (shiftType === "Night") {
-      startDate = new Date(localCurrentDate.setHours(0, 0, 0, 0)); 
-      endDate = new Date(localCurrentDate.setDate(localCurrentDate.getDate() + 1));
-      endDate.setHours(23, 59, 59, 59); 
+      startDate = new Date(localCurrentDate.setHours(0, 0, 0, 0));
+      endDate = new Date(
+        localCurrentDate.setDate(localCurrentDate.getDate() + 1)
+      );
+      endDate.setHours(23, 59, 59, 59);
     } else {
       return res.status(400).json({ message: "Invalid shift type" });
     }
@@ -1819,12 +1964,17 @@ server.put("/punchout", async (req, res) => {
       user_id,
       currentDate: {
         $gte: startDate,
-        $lte: endDate
-      }
+        $lte: endDate,
+      },
     });
 
     if (!attendance) {
-      return res.status(404).json({ message: "Attendance record not found for the specified date and shift" });
+      return res
+        .status(404)
+        .json({
+          message:
+            "Attendance record not found for the specified date and shift",
+        });
     }
 
     // Find the last punch-in object without a punch-out time
@@ -1832,7 +1982,12 @@ server.put("/punchout", async (req, res) => {
     const lastPunchIn = punches[punches.length - 1]; // Get the last object in the array
 
     if (!lastPunchIn || lastPunchIn.punchOut) {
-      return res.status(400).json({ message: "No valid punch-in record found without a corresponding punch-out" });
+      return res
+        .status(400)
+        .json({
+          message:
+            "No valid punch-in record found without a corresponding punch-out",
+        });
     }
 
     // Update the last punch-in object with punch-out time
@@ -1845,7 +2000,10 @@ server.put("/punchout", async (req, res) => {
     lastPunchIn.workingTime = workingTime;
 
     // Recalculate total working time
-    attendance.totalWorkingTime = punches.reduce((total, punch) => total + (punch.workingTime || 0), 0);
+    attendance.totalWorkingTime = punches.reduce(
+      (total, punch) => total + (punch.workingTime || 0),
+      0
+    );
 
     attendance.workStatus = determineWorkStatus(attendance.totalWorkingTime);
     console.log("attendance", attendance);
@@ -1863,20 +2021,35 @@ server.put("/punchout", async (req, res) => {
 const checkIfLate = (punchInDate, shiftType) => {
   const momentPunchInDate = moment(punchInDate); // current punch-in time using moment
 
-  if (shiftType === 'Day') {
-    const lateStart = momentPunchInDate.startOf('day').hours(10).minutes(40).seconds(0); // 10:40 AM same day
+  if (shiftType === "Day") {
+    const lateStart = momentPunchInDate
+      .startOf("day")
+      .hours(10)
+      .minutes(40)
+      .seconds(0); // 10:40 AM same day
     return momentPunchInDate.isAfter(lateStart);
-  } else if (shiftType === 'Night') {
-    const lateStart = momentPunchInDate.startOf('day').hours(20).minutes(40).seconds(0); // 8:40 PM same day
-    const lateEnd = momentPunchInDate.add(1, 'day').startOf('day').hours(8).minutes(40).seconds(0); // 8:40 AM next day
+  } else if (shiftType === "Night") {
+    const lateStart = momentPunchInDate
+      .startOf("day")
+      .hours(20)
+      .minutes(40)
+      .seconds(0); // 8:40 PM same day
+    const lateEnd = momentPunchInDate
+      .add(1, "day")
+      .startOf("day")
+      .hours(8)
+      .minutes(40)
+      .seconds(0); // 8:40 AM next day
 
     // Check if punchInDate falls between lateStart and lateEnd (spanning two days)
-    return momentPunchInDate.isAfter(lateStart) || momentPunchInDate.isBefore(lateEnd);
+    return (
+      momentPunchInDate.isAfter(lateStart) ||
+      momentPunchInDate.isBefore(lateEnd)
+    );
   }
 
   return false;
 };
-
 
 server.put("/attendance-approval", async (req, res) => {
   try {
@@ -1903,7 +2076,9 @@ server.put("/attendance-approval", async (req, res) => {
       endDate = new Date(localconcernDate.setHours(23, 59, 59, 999)); // End of the day
     } else if (shiftType === "Night") {
       startDate = new Date(localconcernDate.setHours(0, 0, 0, 0)); // Start of the day
-      endDate = new Date(localconcernDate.setDate(localconcernDate.getDate() + 1)); // Next day
+      endDate = new Date(
+        localconcernDate.setDate(localconcernDate.getDate() + 1)
+      ); // Next day
       endDate.setHours(19, 59, 59, 999); // End of the next day
     } else {
       return res.status(400).json({ message: "Invalid shift type" });
@@ -1914,8 +2089,8 @@ server.put("/attendance-approval", async (req, res) => {
       user_id,
       concernDate: {
         $gte: startDate,
-        $lte: endDate
-      }
+        $lte: endDate,
+      },
     });
 
     if (!attendance) {
@@ -1923,11 +2098,13 @@ server.put("/attendance-approval", async (req, res) => {
     }
 
     // Replace punches with the new punchIn and punchOut
-    attendance.punches = [{
-      punchIn: punchInTime,
-      punchOut: punchOutTime,
-      workingTime: (punchOutTime - punchInTime) / (1000 * 60) // Convert milliseconds to minutes
-    }];
+    attendance.punches = [
+      {
+        punchIn: punchInTime,
+        punchOut: punchOutTime,
+        workingTime: (punchOutTime - punchInTime) / (1000 * 60), // Convert milliseconds to minutes
+      },
+    ];
 
     // Calculate total working time
     attendance.totalWorkingTime = attendance.punches.reduce((total, punch) => {
@@ -1939,7 +2116,7 @@ server.put("/attendance-approval", async (req, res) => {
 
     // Determine if the punch-in time is late based on shiftType
     const isLate = checkIfLate(punchInTime, shiftType);
-    attendance.status = isLate ? 'Late' : 'On Time';
+    attendance.status = isLate ? "Late" : "On Time";
 
     // Save the updated record
     await attendance.save();
@@ -2024,23 +2201,18 @@ server.get("/attendance/:id", async (req, res) => {
   }
 });
 
-
 server.get("/attendancelist/:id", async (req, res) => {
   const ID = req.params.id;
   try {
-    const data = await AttendanceModel.find({user_id: ID})
-    if(data){
-      res.status(200).json(
-        {
-          message:"data Collected Successuflly ",
-          data: data
-        }
-      );
-    }else{
-      res.statua(404).json("no Data Found")
+    const data = await AttendanceModel.find({ user_id: ID });
+    if (data) {
+      res.status(200).json({
+        message: "data Collected Successuflly ",
+        data: data,
+      });
+    } else {
+      res.statua(404).json("no Data Found");
     }
-
-  
   } catch (error) {
     console.log(error);
     res.status(500).send("Internal Server Error");
@@ -2196,26 +2368,62 @@ server.get("/employees", async (req, res) => {
 
 // // Create message populate
 server.post("/concern", async (req, res) => {
-  const { name, email,ConcernDate, ActualPunchIn, ActualPunchOut,message, currenDate, status, punchType,shiftType, user_id } = req.body;
+  const {
+    name,
+    email,
+    date,
+    ActualPunchIn,
+    ActualPunchOut,
+    message,
+    currenDate,
+    status,
+    concernType,
+    shiftType,
+    user_id,
+  } = req.body;
 
   try {
-    // Create a new instance of AdvisorpackageModel
-    const newPackage = new ConcernModel({
-      name, email,ConcernDate, ActualPunchIn, ActualPunchOut,message, currenDate, status, punchType,shiftType, user_id 
+    // Create a new Concern
+    const newConcern = new ConcernModel({
+      name,
+      email,
+      ConcernDate: date,
+      ActualPunchIn,
+      ActualPunchOut,
+      message,
+      currenDate,
+      status,
+      concernType,
+      shiftType,
+      user_id,
     });
 
-    // Save the package to the database
-    await newPackage.save();
+    // Save the concern to the database
+    await newConcern.save();
 
-    // Update the user's packages array
+    // Update the user's concerns array
     await RegisteruserModal.findByIdAndUpdate(
       user_id,
-      { $push: { concern: newPackage._id } },
+      { $push: { concern: newConcern._id } },
       { new: true }
     );
 
-    // Send a success response
-    res.send("Concern Created and associated with Admin");
+    // Create a new Notification document
+    const newNotification = new NotificationModel({
+      name,
+      Date: currenDate,
+      message: "Concern",
+    });
+
+    // Save notification
+    await newNotification.save();
+
+    // Emit socket event for real-time notification
+    console.log("Emitting newConcernNotification:", newNotification);
+    io.emit("newConcernNotification", newNotification);
+
+    // Send success response
+    res.send("Concern Created and Notification sent to Admin");
   } catch (error) {
     console.log(error);
     res.status(500).send("Internal Server Error");
@@ -2237,7 +2445,7 @@ server.get("/concern/:id", async (req, res) => {
   console.log("id", id);
   try {
     const data = await ConcernModel.find({ user_id: id });
-    console.log("data", data);
+    // console.log("data", data);
     if (data) {
       res.status(200).json(data);
     } else {
@@ -2248,6 +2456,26 @@ server.get("/concern/:id", async (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 });
+
+server.put("/notifications/update-status", adminAuth, async (req, res) => {
+  try {
+    // Update all notifications where message is 'Concern' and status is true
+    const result = await NotificationModel.updateMany(
+      { message: "Concern", status: true },
+      { $set: { status: false } }
+    );
+
+    res.status(200).json({
+      message: "Notifications updated successfully",
+      modifiedCount: result.nModified,
+    });
+  } catch (error) {
+    console.error("Error updating notifications:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+
 server.get("/concernuser/:id", async (req, res) => {
   try {
     // const data = await RegisteruserModal.findById(ID).populate("callback");
@@ -2296,7 +2524,7 @@ server.put("/concern/:id", adminAuth, async (req, res) => {
   }
 });
 
-server.put('/notifications-seen', async (req, res) => {
+server.put("/notifications-seen", async (req, res) => {
   try {
     // Update all notifications with Status=false to Status=true
     const updatedNotifications = await NotificationModel.updateMany(
@@ -2304,10 +2532,15 @@ server.put('/notifications-seen', async (req, res) => {
       { $set: { Status: true } } // Update the Status to true
     );
 
-    res.status(200).json({ message: 'All notifications marked as seen', updatedNotifications });
+    res
+      .status(200)
+      .json({
+        message: "All notifications marked as seen",
+        updatedNotifications,
+      });
   } catch (error) {
-    console.error('Error updating notifications:', error);
-    res.status(500).send('Internal Server Error');
+    console.error("Error updating notifications:", error);
+    res.status(500).send("Internal Server Error");
   }
 });
 //  message All
@@ -2410,18 +2643,15 @@ server.post("/notifymessage", async (req, res) => {
 
     const isExist = await NotifyMessageModel.findOne({ senderId: senderId });
     if (isExist) {
-    const messageData = isExist.message.push(
-        message
-      );
- await isExist.save()
-      res.status(200)
-        .json({ message: "Message Notification push to data" });
+      const messageData = isExist.message.push(message);
+      await isExist.save();
+      res.status(200).json({ message: "Message Notification push to data" });
     } else {
       const savedNotification = new NotifyMessageModel({
         senderName,
         Date,
         status,
-       message: [message],
+        message: [message],
         senderId,
         receiverId,
       });
@@ -2434,50 +2664,50 @@ server.post("/notifymessage", async (req, res) => {
   }
 });
 
-server.get('/notifymessage',async (req,res)=> {
-  try{
-    const data = await NotifyMessageModel.find()
+server.get("/notifymessage", async (req, res) => {
+  try {
+    const data = await NotifyMessageModel.find();
     res.status(200).json({
-      message:"data succesful",
-      data:data
-    })
-  }catch(err){
-    console.log(err)
-    res.status(500).json(err)
+      message: "data succesful",
+      data: data,
+    });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json(err);
   }
-})
+});
 
-
-server.delete('/notifymessage', async (req, res) => {
+server.delete("/notifymessage", async (req, res) => {
   const { id, type } = req.query; // 'id' is the ID value, 'type' is either 'sender' or 'receiver'
 
   try {
     let isIdDeleted;
-    if (type === 'sender') {
+    if (type === "sender") {
       isIdDeleted = await NotifyMessageModel.findOneAndDelete({ senderId: id });
-    } else if (type === 'receiver') {
-      isIdDeleted = await NotifyMessageModel.findOneAndDelete({ receiverId: id });
+    } else if (type === "receiver") {
+      isIdDeleted = await NotifyMessageModel.findOneAndDelete({
+        receiverId: id,
+      });
     } else {
-      return res.status(400).json('Invalid type specified');
+      return res.status(400).json("Invalid type specified");
     }
 
     if (!isIdDeleted) {
-      return res.status(404).json('Notification not found');
+      return res.status(404).json("Notification not found");
     }
 
-    res.status(200).json({ message: 'Notification deleted successfully' });
+    res.status(200).json({ message: "Notification deleted successfully" });
   } catch (err) {
     console.log(err);
-    res.status(500).json('An error occurred while deleting the notification');
+    res.status(500).json("An error occurred while deleting the notification");
   }
 });
-
 
 // server.delete('/notifymessage/:id', async (res, res)=> {
 //   const { id } = req.params
 //   try{
 //    const isIdDeleted = await NotifyMessageModel.findOneAndDelete(id)
-//    if(isIdDeleted) res.status(404).json('Id not found') 
+//    if(isIdDeleted) res.status(404).json('Id not found')
 //    await NotifyMessageModel.save()
 //   }catch(Err){
 //     console.log(Err)
@@ -2585,10 +2815,6 @@ server.get("/docs", async (req, res) => {
   }
 });
 
-
-
-
-
 // count documents
 
 server.get("/adminDashboardlength", async (req, res) => {
@@ -2604,7 +2830,7 @@ server.get("/adminDashboardlength", async (req, res) => {
       callback: callbackCount,
       sale: saleCount,
       transfer: transferCount,
-      project: projectCount, 
+      project: projectCount,
     });
   } catch (error) {
     console.log(error);
@@ -2612,22 +2838,29 @@ server.get("/adminDashboardlength", async (req, res) => {
   }
 });
 
-
 server.get("/employeesdashboard/:id", async (req, res) => {
   const userId = req.params.id;
   try {
-    const attendanceCount = await AttendanceModel.countDocuments({ user_id: userId });
-    const callbackCount = await CallbackModel.countDocuments({ user_id: userId });
+    const attendanceCount = await AttendanceModel.countDocuments({
+      user_id: userId,
+    });
+    const callbackCount = await CallbackModel.countDocuments({
+      user_id: userId,
+    });
     const saleCount = await SaleModel.countDocuments({ user_id: userId });
-    const transferCount = await TransferModel.countDocuments({ user_id: userId });
-    const projectsCount = await ProjectsModel.countDocuments({ assigneeId: userId });
+    const transferCount = await TransferModel.countDocuments({
+      user_id: userId,
+    });
+    const projectsCount = await ProjectsModel.countDocuments({
+      assigneeId: userId,
+    });
 
     res.status(200).json({
       attendance: attendanceCount,
       callback: callbackCount,
       sale: saleCount,
       transfer: transferCount,
-      project:projectsCount,
+      project: projectsCount,
     });
   } catch (error) {
     console.log(error);
