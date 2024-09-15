@@ -1,7 +1,7 @@
 const express = require("express");
 require("dotenv").config();
 const cors = require("cors");
-const { default: mongoose } = require("mongoose");
+const { default: mongoose, Mongoose } = require("mongoose");
 const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
@@ -38,6 +38,8 @@ const adminAuth = require("./middleware/adminAuth");
 const commonAuth = require("./middleware/commonAuth");
 const userAuth = require("./middleware/userAuth");
 const SessionsModel = require("./models/SessionsModel ");
+const { HolidayModel } = require("./models/AdminModel/HolidayModel");
+const moment = require("moment");
 
 const server = express();
 //to avoid cors error//
@@ -1911,12 +1913,9 @@ server.get("/todays-attendence", async (req, res) => {
     });
 
     if (!attendance) {
-      return res
-        .status(404)
-        .json({
-          message:
-            "Attendance record not found for the specified date and shift",
-        });
+      return res.status(404).json({
+        message: "Attendance record not found for the specified date and shift",
+      });
     }
 
     // Return the attendance record
@@ -1969,12 +1968,9 @@ server.put("/punchout", async (req, res) => {
     });
 
     if (!attendance) {
-      return res
-        .status(404)
-        .json({
-          message:
-            "Attendance record not found for the specified date and shift",
-        });
+      return res.status(404).json({
+        message: "Attendance record not found for the specified date and shift",
+      });
     }
 
     // Find the last punch-in object without a punch-out time
@@ -1982,12 +1978,10 @@ server.put("/punchout", async (req, res) => {
     const lastPunchIn = punches[punches.length - 1]; // Get the last object in the array
 
     if (!lastPunchIn || lastPunchIn.punchOut) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "No valid punch-in record found without a corresponding punch-out",
-        });
+      return res.status(400).json({
+        message:
+          "No valid punch-in record found without a corresponding punch-out",
+      });
     }
 
     // Update the last punch-in object with punch-out time
@@ -2063,69 +2057,89 @@ server.put("/attendance-approval", async (req, res) => {
     // Convert dates to UTC
     const punchInTime = new Date(punchIn);
     const punchOutTime = new Date(punchOut);
+    const concernDateObj = new Date(concernDate); // Convert the concern date to a Date object
 
-    if (isNaN(punchInTime) || isNaN(punchOutTime)) {
+    if (isNaN(punchInTime) || isNaN(punchOutTime) || isNaN(concernDateObj)) {
       return res.status(400).json({ message: "Invalid date format" });
     }
 
-    // Determine the date range based on shiftType
-    let startDate, endDate;
-    const localconcernDate = new Date(concernDate);
-    if (shiftType === "Day") {
-      startDate = new Date(localconcernDate.setHours(0, 0, 0, 0)); // Start of the day
-      endDate = new Date(localconcernDate.setHours(23, 59, 59, 999)); // End of the day
-    } else if (shiftType === "Night") {
-      startDate = new Date(localconcernDate.setHours(0, 0, 0, 0)); // Start of the day
-      endDate = new Date(
-        localconcernDate.setDate(localconcernDate.getDate() + 1)
-      ); // Next day
-      endDate.setHours(19, 59, 59, 999); // End of the next day
-    } else {
-      return res.status(400).json({ message: "Invalid shift type" });
-    }
+    // Extract only the year, month, and day from the concernDate
+    const concernDayStart = new Date(concernDateObj.setHours(0, 0, 0, 0)); // Start of the day
+    const concernDayEnd = new Date(concernDateObj.setHours(23, 59, 59, 999)); // End of the day
 
-    // Find the attendance record for the specified user_id and concernDate
-    const attendance = await AttendanceModel.findOne({
-      user_id,
-      concernDate: {
-        $gte: startDate,
-        $lte: endDate,
+    // Find the attendance record for the specified user_id and concernDate (matching the day)
+    let attendance = await AttendanceModel.findOne({
+      user_id: new mongoose.Types.ObjectId(user_id),
+      currentDate: {
+        $gte: concernDayStart, // Match dates between the start and end of the day
+        $lte: concernDayEnd,
       },
     });
 
+    // If attendance record does not exist, create a new one
     if (!attendance) {
-      return res.status(404).json({ message: "Attendance record not found" });
+      attendance = new AttendanceModel({
+        user_id: new mongoose.Types.ObjectId(user_id),
+        currentDate: concernDateObj, // Use the concernDate as the current date
+        punches: [],
+        totalWorkingTime: 0,
+        workStatus: "Absent",
+        status: "On Time",
+        shiftType: shiftType
+      });
     }
 
-    // Replace punches with the new punchIn and punchOut
+    // Handling night shift punches that span two days
+    let totalWorkingTime;
+    if (shiftType === "Night") {
+      const nightShiftStart = new Date(punchInTime);  // punchIn at 8 PM
+      const nightShiftEnd = new Date(punchOutTime);   // punchOut at 5 AM (next day)
+
+      // If punchOut is on the next day, we calculate working hours by manually adjusting time.
+      if (nightShiftEnd.getTime() < nightShiftStart.getTime()) {
+        nightShiftEnd.setDate(nightShiftEnd.getDate() + 1);  // Adjust punchOut to the next day
+      }
+
+      // Calculate total working time in minutes for the night shift
+      totalWorkingTime = (nightShiftEnd - nightShiftStart) / (1000 * 60); // Milliseconds to minutes
+    } else {
+      // Handling for Day shift (same day punchIn and punchOut)
+      totalWorkingTime = (punchOutTime - punchInTime) / (1000 * 60); // Milliseconds to minutes
+    }
+
+    // Update punches and total working time
     attendance.punches = [
       {
         punchIn: punchInTime,
         punchOut: punchOutTime,
-        workingTime: (punchOutTime - punchInTime) / (1000 * 60), // Convert milliseconds to minutes
+        workingTime: totalWorkingTime, // in minutes
       },
     ];
 
-    // Calculate total working time
-    attendance.totalWorkingTime = attendance.punches.reduce((total, punch) => {
-      return total + (punch.workingTime || 0);
-    }, 0);
+    attendance.totalWorkingTime = totalWorkingTime;
 
-    // Determine work status
-    attendance.workStatus = determineWorkStatus(attendance.totalWorkingTime);
+    // Determine work status based on total working time (in minutes)
+    // Assuming a Full Day for Night Shift is typically 9 hours (540 minutes)
+    if (totalWorkingTime >= 540) {
+      attendance.workStatus = "Full Day";
+    } else if (totalWorkingTime >= 270) {
+      attendance.workStatus = "Half Day";
+    } else {
+      attendance.workStatus = "Absent";
+    }
 
     // Determine if the punch-in time is late based on shiftType
     const isLate = checkIfLate(punchInTime, shiftType);
     attendance.status = isLate ? "Late" : "On Time";
 
-    // Save the updated record
+    // Save the attendance record (either newly created or updated)
     await attendance.save();
 
-    // Respond with the updated attendance record
+    // Respond with the attendance record
     res.status(200).json(attendance);
   } catch (error) {
-    console.error("Error updating punches:", error);
-    res.status(500).json({ message: "Failed to update punches" });
+    console.error("Error updating or creating attendance:", error);
+    res.status(500).json({ message: "Failed to update or create attendance" });
   }
 });
 
@@ -2202,22 +2216,51 @@ server.get("/attendance/:id", async (req, res) => {
 });
 
 server.get("/attendancelist/:id", async (req, res) => {
-  const ID = req.params.id;
+  const userId = req.params.id;
+  const { month, year, date } = req.query;
+
   try {
-    const data = await AttendanceModel.find({ user_id: ID });
-    if (data) {
+    let query = { user_id: userId };
+
+    // Filter by month and year
+    if (month && year) {
+      const startOfMonth = new Date(year, month - 1, 1);
+      const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
+
+      query.currentDate = {
+        $gte: startOfMonth,
+        $lte: endOfMonth,
+      };
+    }
+
+    // Filter by exact date
+    if (date) {
+      const specificDate = new Date(date);
+      const startOfDay = new Date(specificDate.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(specificDate.setHours(23, 59, 59, 999));
+
+      query.currentDate = {
+        $gte: startOfDay,
+        $lte: endOfDay,
+      };
+    }
+
+    const data = await AttendanceModel.find(query);
+
+    if (data.length > 0) {
       res.status(200).json({
-        message: "data Collected Successuflly ",
+        message: "Data Collected Successfully",
         data: data,
       });
     } else {
-      res.statua(404).json("no Data Found");
+      res.status(404).json({ message: "No Data Found" });
     }
   } catch (error) {
     console.log(error);
     res.status(500).send("Internal Server Error");
   }
 });
+
 //  All Attendace
 server.get("/attendance", async (req, res) => {
   try {
@@ -2475,7 +2518,6 @@ server.put("/notifications/update-status", adminAuth, async (req, res) => {
   }
 });
 
-
 server.get("/concernuser/:id", async (req, res) => {
   try {
     // const data = await RegisteruserModal.findById(ID).populate("callback");
@@ -2532,12 +2574,10 @@ server.put("/notifications-seen", async (req, res) => {
       { $set: { Status: true } } // Update the Status to true
     );
 
-    res
-      .status(200)
-      .json({
-        message: "All notifications marked as seen",
-        updatedNotifications,
-      });
+    res.status(200).json({
+      message: "All notifications marked as seen",
+      updatedNotifications,
+    });
   } catch (error) {
     console.error("Error updating notifications:", error);
     res.status(500).send("Internal Server Error");
@@ -2867,6 +2907,76 @@ server.get("/employeesdashboard/:id", async (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 });
+
+// ADMIN HOLIDAY LIST APIs //
+
+// Add a single holiday
+server.post("/add-holiday", async (req, res) => {
+  try {
+    const { holiday, status, label } = req.body;
+    const newHoliday = new HolidayModel({ holiday, status, label });
+    await newHoliday.save();
+    res
+      .status(201)
+      .json({ message: "Holiday added successfully", holiday: newHoliday });
+  } catch (error) {
+    res.status(500).json({ error: "Error adding holiday" });
+  }
+});
+
+// Edit an existing holiday
+server.put("/edit-holiday/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { holiday, status, label } = req.body;
+    const updatedHoliday = await HolidayModel.findByIdAndUpdate(
+      id,
+      { holiday, status, label },
+      { new: true }
+    );
+    if (!updatedHoliday)
+      return res.status(404).json({ error: "Holiday not found" });
+    res
+      .status(200)
+      .json({
+        message: "Holiday updated successfully",
+        holiday: updatedHoliday,
+      });
+  } catch (error) {
+    res.status(500).json({ error: "Error updating holiday" });
+  }
+});
+
+// Bulk insert holidays
+server.post("/bulk-insert-holidays", async (req, res) => {
+  try {
+    const holidays = req.body.holidays; // Expecting an array of holiday objects
+    const insertedHolidays = await HolidayModel.insertMany(holidays);
+    res
+      .status(201)
+      .json({
+        message: "Holidays inserted successfully",
+        holidays: insertedHolidays,
+      });
+  } catch (error) {
+    res.status(500).json({ error: "Error inserting holidays" });
+  }
+});
+
+// Delete a holiday
+server.delete("/delete-holiday/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deletedHoliday = await HolidayModel.findByIdAndDelete(id);
+    if (!deletedHoliday)
+      return res.status(404).json({ error: "Holiday not found" });
+    res.status(200).json({ message: "Holiday deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ error: "Error deleting holiday" });
+  }
+});
+
+// ADMIN HOLIDAY LIST APIs //
 
 // SERVER
 // server running
