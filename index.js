@@ -2224,8 +2224,8 @@ server.get("/attendancelist/:id", async (req, res) => {
 
     // Filter by month and year
     if (month && year) {
-      const startOfMonth = new Date(year, month - 1, 1);
-      const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
+      const startOfMonth = moment.tz([year, month - 1], 'Asia/Kolkata').startOf('month').toDate();
+      const endOfMonth = moment.tz([year, month - 1], 'Asia/Kolkata').endOf('month').toDate();
 
       query.currentDate = {
         $gte: startOfMonth,
@@ -2235,12 +2235,11 @@ server.get("/attendancelist/:id", async (req, res) => {
 
     // Filter by exact date
     if (date) {
-      const specificDate = new Date(date);
-      const startOfDay = new Date(specificDate.setHours(0, 0, 0, 0));
-      const endOfDay = new Date(specificDate.setHours(23, 59, 59, 999));
+      const specificDate = moment.tz(date, 'Asia/Kolkata').startOf('day').toDate();
+      const endOfDay = moment.tz(date, 'Asia/Kolkata').endOf('day').toDate();
 
       query.currentDate = {
-        $gte: startOfDay,
+        $gte: specificDate,
         $lte: endOfDay,
       };
     }
