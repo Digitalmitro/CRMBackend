@@ -2085,19 +2085,19 @@ server.put("/attendance-approval", async (req, res) => {
         totalWorkingTime: 0,
         workStatus: "Absent",
         status: "On Time",
-        shiftType: shiftType
+        shiftType: shiftType,
       });
     }
 
     // Handling night shift punches that span two days
     let totalWorkingTime;
     if (shiftType === "Night") {
-      const nightShiftStart = new Date(punchInTime);  // punchIn at 8 PM
-      const nightShiftEnd = new Date(punchOutTime);   // punchOut at 5 AM (next day)
+      const nightShiftStart = new Date(punchInTime); // punchIn at 8 PM
+      const nightShiftEnd = new Date(punchOutTime); // punchOut at 5 AM (next day)
 
       // If punchOut is on the next day, we calculate working hours by manually adjusting time.
       if (nightShiftEnd.getTime() < nightShiftStart.getTime()) {
-        nightShiftEnd.setDate(nightShiftEnd.getDate() + 1);  // Adjust punchOut to the next day
+        nightShiftEnd.setDate(nightShiftEnd.getDate() + 1); // Adjust punchOut to the next day
       }
 
       // Calculate total working time in minutes for the night shift
@@ -2215,7 +2215,7 @@ server.get("/attendance/:id", async (req, res) => {
   }
 });
 
-server.get("/attendancelist/:id", async (req, res) => {
+server.get("/attendancelist/:id", userAuth, async (req, res) => {
   const userId = req.params.id;
   const { month, year, date } = req.query;
 
@@ -2224,8 +2224,14 @@ server.get("/attendancelist/:id", async (req, res) => {
 
     // Filter by month and year
     if (month && year) {
-      const startOfMonth = moment.tz([year, month - 1], 'Asia/Kolkata').startOf('month').toDate();
-      const endOfMonth = moment.tz([year, month - 1], 'Asia/Kolkata').endOf('month').toDate();
+      const startOfMonth = moment
+        .tz([year, month - 1], "Asia/Kolkata")
+        .startOf("month")
+        .toDate();
+      const endOfMonth = moment
+        .tz([year, month - 1], "Asia/Kolkata")
+        .endOf("month")
+        .toDate();
 
       query.currentDate = {
         $gte: startOfMonth,
@@ -2235,8 +2241,11 @@ server.get("/attendancelist/:id", async (req, res) => {
 
     // Filter by exact date
     if (date) {
-      const specificDate = moment.tz(date, 'Asia/Kolkata').startOf('day').toDate();
-      const endOfDay = moment.tz(date, 'Asia/Kolkata').endOf('day').toDate();
+      const specificDate = moment
+        .tz(date, "Asia/Kolkata")
+        .startOf("day")
+        .toDate();
+      const endOfDay = moment.tz(date, "Asia/Kolkata").endOf("day").toDate();
 
       query.currentDate = {
         $gte: specificDate,
@@ -2256,6 +2265,111 @@ server.get("/attendancelist/:id", async (req, res) => {
     }
   } catch (error) {
     console.log(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+server.get("/attendance/status/:id", userAuth, async (req, res) => {
+  const userId = req.params.id;
+
+  // Get the current date and set time to 00:00:00 and 23:59:59 for comparison
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date();
+  endOfDay.setHours(23, 59, 59, 999);
+
+  try {
+    // Find today's attendance record
+    const attendanceRecord = await AttendanceModel.findOne({
+      user_id: userId,
+      currentDate: {
+        $gte: startOfDay,
+        $lte: endOfDay,
+      },
+    }).sort({ createdAt: -1 }); // Sort to get the latest record if multiple entries
+
+    // If no record is found, assume the user hasn't punched in yet
+    if (!attendanceRecord) {
+      return res.status(200).json({
+        isPunchedIn: false,
+        message:
+          "No attendance record found for today. User has not punched in yet.",
+      });
+    }
+
+    const punches = attendanceRecord.punches;
+
+    // Check if there are no punches yet for the day
+    if (punches.length === 0) {
+      return res.status(200).json({
+        isPunchedIn: false,
+        message: "User has no punch-in or punch-out records today",
+      });
+    }
+
+    // Get the last punch entry
+    const lastPunch = punches[punches.length - 1];
+
+    // Check if the user has punched in but not punched out
+    if (lastPunch.punchIn && !lastPunch.punchOut) {
+      return res.status(200).json({
+        isPunchedIn: true,
+        message: "User is currently punched in",
+        punchInTime: lastPunch.punchIn,
+      });
+    } else if (lastPunch.punchIn && lastPunch.punchOut) {
+      return res.status(200).json({
+        isPunchedIn: false,
+        message: "User has punched out",
+        punchInTime: lastPunch.punchIn,
+        punchOutTime: lastPunch.punchOut,
+      });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+// ADMIN ATTENDANCE
+server.get("/admin/todays-attendance", adminAuth, async (req, res) => {
+  try {
+    // Calculate the timezone offset for IST (Asia/Kolkata), which is UTC+5:30
+    const offsetIST = 5.5 * 60 * 60 * 1000; // 5.5 hours in milliseconds
+
+    // Get the current date in UTC
+    const nowUTC = new Date();
+
+    // Calculate the start and end of the current day in Asia/Kolkata timezone
+    const startOfDay = new Date(nowUTC.getTime() + offsetIST);
+    startOfDay.setUTCHours(0, 0, 0, 0); // Set to the start of the day (midnight)
+
+    const endOfDay = new Date(nowUTC.getTime() + offsetIST);
+    endOfDay.setUTCHours(23, 59, 59, 999); // Set to the end of the day
+
+    // Query for today's attendance records
+    const query = {
+      currentDate: {
+        $gte: new Date(startOfDay.getTime() - offsetIST), // Convert back to UTC
+        $lte: new Date(endOfDay.getTime() - offsetIST), // Convert back to UTC
+      },
+    };
+
+    const todaysAttendance = await AttendanceModel.find(query);
+
+    // If attendance records are found
+    if (todaysAttendance.length > 0) {
+      res.status(200).json({
+        message: "Today's attendance data collected successfully",
+        data: todaysAttendance,
+      });
+    } else {
+      // If no records are found for today
+      res.status(404).json({ message: "No attendance records found for today" });
+    }
+  } catch (error) {
+    console.error(error);
     res.status(500).send("Internal Server Error");
   }
 });
@@ -2935,12 +3049,10 @@ server.put("/edit-holiday/:id", async (req, res) => {
     );
     if (!updatedHoliday)
       return res.status(404).json({ error: "Holiday not found" });
-    res
-      .status(200)
-      .json({
-        message: "Holiday updated successfully",
-        holiday: updatedHoliday,
-      });
+    res.status(200).json({
+      message: "Holiday updated successfully",
+      holiday: updatedHoliday,
+    });
   } catch (error) {
     res.status(500).json({ error: "Error updating holiday" });
   }
@@ -2951,12 +3063,10 @@ server.post("/bulk-insert-holidays", async (req, res) => {
   try {
     const holidays = req.body.holidays; // Expecting an array of holiday objects
     const insertedHolidays = await HolidayModel.insertMany(holidays);
-    res
-      .status(201)
-      .json({
-        message: "Holidays inserted successfully",
-        holidays: insertedHolidays,
-      });
+    res.status(201).json({
+      message: "Holidays inserted successfully",
+      holidays: insertedHolidays,
+    });
   } catch (error) {
     res.status(500).json({ error: "Error inserting holidays" });
   }

@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const { RegisteradminModal } = require("../models/AdminModel/RegisterAdminModel");
 const { RegisteruserModal } = require("../models/UserModel/RegisterUserModel");
 
 const userAuth = async (req, res, next) => {
@@ -9,15 +10,16 @@ const userAuth = async (req, res, next) => {
     console.log(verifyToken);
 
     const rootUser = await RegisteruserModal.findOne({ _id: verifyToken._id });
+    const rootAdmin = await RegisteradminModal.findById(verifyToken._id);
 
     console.log(rootUser);
 
-    if (!rootUser) {
+    if (!rootUser && !rootAdmin) {
       throw new Error("User Not Found.");
     }
 
     req.token = token;
-    req.rootUser = rootUser;
+    req.rootUser = rootUser || rootAdmin;
 
     next();
   } catch (error) {
