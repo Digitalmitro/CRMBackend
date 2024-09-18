@@ -62,6 +62,10 @@ const Port = process.env.port;
 const secret_key = process.env.secret_key;
 const expiry = process.env.expiry;
 
+const otpGenerator = require("otp-generator");
+const { sendMail } = require("./tools/sendMail");
+const OTP_EXPIRATION_TIME = 5 * 60 * 1000; // 5 minutes expiration
+
 server.use((req, res, next) => {
   const allowedOrigins = [
     "https://digitalmitro.info",
@@ -589,6 +593,7 @@ server.put("/updateadminpassword", adminAuth, async (req, res) => {
 // });
 
 // NEW ADMIN LOGIN
+
 server.post("/loginadmin", async (req, res) => {
   try {
     const logEmail = req.body.email;
@@ -604,11 +609,72 @@ server.post("/loginadmin", async (req, res) => {
 
     if (adminFound) {
       const passCheck = await bcrypt.compare(logPass, adminFound.password);
-      const token = await adminFound.generateAuthToken();
 
       if (passCheck) {
+        // Generate 6-digit OTP
+        const otp = otpGenerator.generate(6, { upperCase: false, specialChars: false });
+        const otpExpiration = new Date(Date.now() + OTP_EXPIRATION_TIME);
+
+        // Save OTP and expiration time in the admin's record
+        adminFound.otp = otp;
+        adminFound.otpExpiration = otpExpiration;
+        await adminFound.save();
+
+        // Send OTP email
+        const emailBody = `<p>Your OTP for login is: <b>${otp}</b></p><p>This OTP is valid for 5 minutes.</p>`;
+        const mailSent = await sendMail(adminFound.email, "Your OTP for Admin Login", emailBody);
+
+        if (mailSent) {
+          res.status(200).json({
+            status: "OTP sent to email",
+            message: "Please check your email for the OTP to complete the login.",
+            success: true
+          });
+        } else {
+          res.status(500).json({ message: "Failed to send OTP email", success: false });
+        }
+      } else {
+        res
+          .status(400)
+          .json({ message: "Invalid login credentials", success: false });
+      }
+    } else {
+      res.status(422).json({ message: "Admin Not Found!", success: false });
+    }
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .json({ message: "Server error", success: false });
+  }
+});
+
+server.post("/admin/verify-otp", async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res
+        .status(422)
+        .json({ message: "Please provide both email and OTP", success: false });
+    }
+
+    const adminFound = await RegisteradminModal.findOne({ email: email });
+
+    if (adminFound) {
+      const currentTime = new Date();
+
+      // Check if OTP is correct and not expired
+      if (adminFound.otp === otp && currentTime < adminFound.otpExpiration) {
+        const token = await adminFound.generateAuthToken(); // Generate token upon successful OTP verification
+
+        // Clear OTP and expiration after successful verification
+        adminFound.otp = null;
+        adminFound.otpExpiration = null;
+        await adminFound.save();
+
         res.status(200).json({
-          status: "login successful",
+          message: "OTP verified successfully, login complete.",
           token: token,
           user: {
             name: adminFound.name,
@@ -616,24 +682,19 @@ server.post("/loginadmin", async (req, res) => {
             phone: adminFound.phone,
             _id: adminFound._id,
           },
+          success: true
         });
-        // const session = new SessionsModel({
-        //   userId: adminFound._id,
-        //   token: token
-        // });
-        // await session.save();
       } else {
         res
           .status(400)
-          .json({ message: "Invalid login credentials", success: false });
+          .json({ message: "Invalid or expired OTP", success: false });
       }
     } else {
-      res.status(422).json({ message: "Admin Not Found !", success: false });
+      res.status(404).json({ message: "Admin Not Found!", success: false });
     }
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Invalid login credentials", success: false });
+    console.error(error);
+    res.status(500).json({ message: "Server error", success: false });
   }
 });
 
@@ -2341,38 +2402,39 @@ server.get("/admin/todays-attendance", adminAuth, async (req, res) => {
     // Get the current date in UTC
     const nowUTC = new Date();
 
-    // Calculate the start and end of the current day in Asia/Kolkata timezone
-    const startOfDay = new Date(nowUTC.getTime() + offsetIST);
-    startOfDay.setUTCHours(0, 0, 0, 0); // Set to the start of the day (midnight)
+    // Calculate the start and end of the previous day in Asia/Kolkata timezone
+    const startOfYesterday = new Date(nowUTC.getTime() + offsetIST - 24 * 60 * 60 * 1000); // Move to yesterday
+    startOfYesterday.setUTCHours(0, 0, 0, 0); // Set to the start of the day (midnight)
 
-    const endOfDay = new Date(nowUTC.getTime() + offsetIST);
-    endOfDay.setUTCHours(23, 59, 59, 999); // Set to the end of the day
+    const endOfYesterday = new Date(nowUTC.getTime() + offsetIST - 24 * 60 * 60 * 1000); // Move to yesterday
+    endOfYesterday.setUTCHours(23, 59, 59, 999); // Set to the end of the day
 
-    // Query for today's attendance records
+    // Query for yesterday's attendance records
     const query = {
       currentDate: {
-        $gte: new Date(startOfDay.getTime() - offsetIST), // Convert back to UTC
-        $lte: new Date(endOfDay.getTime() - offsetIST), // Convert back to UTC
+        $gte: new Date(startOfYesterday.getTime() - offsetIST), // Convert back to UTC
+        $lte: new Date(endOfYesterday.getTime() - offsetIST), // Convert back to UTC
       },
     };
 
-    const todaysAttendance = await AttendanceModel.find(query);
+    const yesterdaysAttendance = await AttendanceModel.find(query);
 
     // If attendance records are found
-    if (todaysAttendance.length > 0) {
+    if (yesterdaysAttendance.length > 0) {
       res.status(200).json({
-        message: "Today's attendance data collected successfully",
-        data: todaysAttendance,
+        message: "Yesterday's attendance data collected successfully",
+        data: yesterdaysAttendance,
       });
     } else {
-      // If no records are found for today
-      res.status(404).json({ message: "No attendance records found for today" });
+      // If no records are found for yesterday
+      res.status(404).json({ message: "No attendance records found for yesterday" });
     }
   } catch (error) {
     console.error(error);
     res.status(500).send("Internal Server Error");
   }
 });
+
 
 //  All Attendace
 server.get("/attendance", async (req, res) => {
