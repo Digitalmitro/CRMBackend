@@ -1946,44 +1946,44 @@ server.post("/attendance", async (req, res) => {
   }
 });
 
-server.get("/todays-attendence", async (req, res) => {
+server.get("/admin/todays-attendance", adminAuth, async (req, res) => {
   try {
-    const { user_id, currentDate } = req.query;
+    // Calculate the timezone offset for IST (Asia/Kolkata), which is UTC+5:30
+    const offsetIST = 5.5 * 60 * 60 * 1000; // 5.5 hours in milliseconds
 
-    if (!user_id || !currentDate) {
-      return res
-        .status(400)
-        .json({ message: "user_id and currentDate are required" });
-    }
+    // Get the current date in UTC
+    const nowUTC = new Date();
 
-    // Convert currentDate to local time (IST)
-    // const localCurrentDate = new Date(new Date(currentDate).toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-    const localCurrentDate = new Date(currentDate);
+    // Calculate the start and end of the current day in Asia/Kolkata timezone
+    const startOfDay = new Date(nowUTC.getTime() + offsetIST);
+    startOfDay.setUTCHours(0, 0, 0, 0); // Set to the start of the day (midnight)
 
-    // Determine the start and end of the day
-    const startDate = new Date(localCurrentDate.setHours(0, 0, 0, 0));
-    const endDate = new Date(localCurrentDate.setHours(23, 59, 59, 59));
+    const endOfDay = new Date(nowUTC.getTime() + offsetIST);
+    endOfDay.setUTCHours(23, 59, 59, 999); // Set to the end of the day
 
-    // Find the attendance record for the specified user_id and currentDate within the day shift time range
-    const attendance = await AttendanceModel.findOne({
-      user_id,
+    // Query for today's attendance records
+    const query = {
       currentDate: {
-        $gte: startDate,
-        $lt: endDate,
+        $gte: new Date(startOfDay.getTime() - offsetIST), // Convert back to UTC
+        $lte: new Date(endOfDay.getTime() - offsetIST), // Convert back to UTC
       },
-    });
+    };
 
-    if (!attendance) {
-      return res.status(404).json({
-        message: "Attendance record not found for the specified date and shift",
+    const todaysAttendance = await AttendanceModel.find(query);
+
+    // If attendance records are found
+    if (todaysAttendance.length > 0) {
+      res.status(200).json({
+        message: "Today's attendance data collected successfully",
+        data: todaysAttendance,
       });
+    } else {
+      // If no records are found for today
+      res.status(404).json({ message: "No attendance records found for today" });
     }
-
-    // Return the attendance record
-    res.status(200).json(attendance);
   } catch (error) {
-    console.error("Error retrieving attendance record:", error);
-    res.status(500).json({ message: "Failed to retrieve attendance record" });
+    console.error(error);
+    res.status(500).send("Internal Server Error");
   }
 });
 
