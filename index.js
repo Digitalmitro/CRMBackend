@@ -1946,7 +1946,7 @@ server.post("/attendance", async (req, res) => {
   }
 });
 
-server.get("/todays-attendence", adminAuth, async (req, res) => {
+server.get("/todays-attendence", userAuth, async (req, res) => {
   try {
     // Calculate the timezone offset for IST (Asia/Kolkata), which is UTC+5:30
     const offsetIST = 5.5 * 60 * 60 * 1000; // 5.5 hours in milliseconds
