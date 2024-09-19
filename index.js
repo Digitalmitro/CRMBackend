@@ -1948,42 +1948,42 @@ server.post("/attendance", async (req, res) => {
 
 server.get("/todays-attendence", userAuth, async (req, res) => {
   try {
-    // Calculate the timezone offset for IST (Asia/Kolkata), which is UTC+5:30
-    const offsetIST = 5.5 * 60 * 60 * 1000; // 5.5 hours in milliseconds
+    const { user_id, currentDate } = req.query;
 
-    // Get the current date in UTC
-    const nowUTC = new Date();
-
-    // Calculate the start and end of the current day in Asia/Kolkata timezone
-    const startOfDay = new Date(nowUTC.getTime() + offsetIST);
-    startOfDay.setUTCHours(0, 0, 0, 0); // Set to the start of the day (midnight)
-
-    const endOfDay = new Date(nowUTC.getTime() + offsetIST);
-    endOfDay.setUTCHours(23, 59, 59, 999); // Set to the end of the day
-
-    // Query for today's attendance records
-    const query = {
-      currentDate: {
-        $gte: new Date(startOfDay.getTime() - offsetIST), // Convert back to UTC
-        $lte: new Date(endOfDay.getTime() - offsetIST), // Convert back to UTC
-      },
-    };
-
-    const todaysAttendance = await AttendanceModel.find(query);
-
-    // If attendance records are found
-    if (todaysAttendance.length > 0) {
-      res.status(200).json({
-        message: "Today's attendance data collected successfully",
-        data: todaysAttendance,
-      });
-    } else {
-      // If no records are found for today
-      res.status(404).json({ message: "No attendance records found for today" });
+    if (!user_id || !currentDate) {
+      return res
+        .status(400)
+        .json({ message: "user_id and currentDate are required" });
     }
+
+    // Convert currentDate to local time (IST)
+    // const localCurrentDate = new Date(new Date(currentDate).toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+    const localCurrentDate = new Date(currentDate);
+
+    // Determine the start and end of the day
+    const startDate = new Date(localCurrentDate.setHours(0, 0, 0, 0));
+    const endDate = new Date(localCurrentDate.setHours(23, 59, 59, 59));
+
+    // Find the attendance record for the specified user_id and currentDate within the day shift time range
+    const attendance = await AttendanceModel.findOne({
+      user_id,
+      currentDate: {
+        $gte: startDate,
+        $lt: endDate,
+      },
+    });
+
+    if (!attendance) {
+      return res.status(404).json({
+        message: "Attendance record not found for the specified date and shift",
+      });
+    }
+
+    // Return the attendance record
+    res.status(200).json(attendance);
   } catch (error) {
-    console.error(error);
-    res.status(500).send("Internal Server Error");
+    console.error("Error retrieving attendance record:", error);
+    res.status(500).json({ message: "Failed to retrieve attendance record" });
   }
 });
 
@@ -2402,32 +2402,32 @@ server.get("/admin/todays-attendance", adminAuth, async (req, res) => {
     // Get the current date in UTC
     const nowUTC = new Date();
 
-    // Calculate the start and end of the previous day in Asia/Kolkata timezone
-    const startOfYesterday = new Date(nowUTC.getTime() + offsetIST - 24 * 60 * 60 * 1000); // Move to yesterday
-    startOfYesterday.setUTCHours(0, 0, 0, 0); // Set to the start of the day (midnight)
+    // Calculate the start and end of the current day in Asia/Kolkata timezone
+    const startOfDay = new Date(nowUTC.getTime() + offsetIST);
+    startOfDay.setUTCHours(0, 0, 0, 0); // Set to the start of the day (midnight)
 
-    const endOfYesterday = new Date(nowUTC.getTime() + offsetIST - 24 * 60 * 60 * 1000); // Move to yesterday
-    endOfYesterday.setUTCHours(23, 59, 59, 999); // Set to the end of the day
+    const endOfDay = new Date(nowUTC.getTime() + offsetIST);
+    endOfDay.setUTCHours(23, 59, 59, 999); // Set to the end of the day
 
-    // Query for yesterday's attendance records
+    // Query for today's attendance records
     const query = {
       currentDate: {
-        $gte: new Date(startOfYesterday.getTime() - offsetIST), // Convert back to UTC
-        $lte: new Date(endOfYesterday.getTime() - offsetIST), // Convert back to UTC
+        $gte: new Date(startOfDay.getTime() - offsetIST), // Convert back to UTC
+        $lte: new Date(endOfDay.getTime() - offsetIST), // Convert back to UTC
       },
     };
 
-    const yesterdaysAttendance = await AttendanceModel.find(query);
+    const todaysAttendance = await AttendanceModel.find(query);
 
     // If attendance records are found
-    if (yesterdaysAttendance.length > 0) {
+    if (todaysAttendance.length > 0) {
       res.status(200).json({
-        message: "Yesterday's attendance data collected successfully",
-        data: yesterdaysAttendance,
+        message: "Today's attendance data collected successfully",
+        data: todaysAttendance,
       });
     } else {
-      // If no records are found for yesterday
-      res.status(404).json({ message: "No attendance records found for yesterday" });
+      // If no records are found for today
+      res.status(404).json({ message: "No attendance records found for today" });
     }
   } catch (error) {
     console.error(error);
