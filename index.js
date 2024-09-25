@@ -2684,7 +2684,7 @@ server.get("/approved-leaves/:id", adminAuth, async (req, res) => {
 
     // Query to fetch concerns with concernType: Leave and status: Approved
     const concerns = await ConcernModel.find({
-      concernType: "Leave",
+      concernType: "Leave Application",
       status: "Approved",
       user_id: userId,
       ConcernDate: {
