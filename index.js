@@ -2670,7 +2670,6 @@ server.get("/concern", async (req, res) => {
 server.get("/approved-leaves/:id", adminAuth, async (req, res) => {
   try {
     const userId = new mongoose.Types.ObjectId(req.params.id);
-    // Get year and month from query parameters
     const { year, month } = req.query;
 
     if (!year || !month) {
@@ -2678,23 +2677,27 @@ server.get("/approved-leaves/:id", adminAuth, async (req, res) => {
     }
 
     // Create a date range for the specified month
-    const startDate = new Date(`${year}-${month}-01`);
-    const endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + 1); // Move to the next month
+    const startDate = moment(`${year}-${month}-01`, "YYYY-MM-DD").startOf('month');
+    const endDate = moment(startDate).endOf('month'); // End of the month
 
     // Query to fetch concerns with concernType: Leave and status: Approved
     const concerns = await ConcernModel.find({
       concernType: "Leave Application",
       status: "Approved",
       user_id: userId,
-      ConcernDate: {
-        $gte: startDate.toISOString().split("T")[0], // Convert date to 'YYYY-MM-DD' format
-        $lt: endDate.toISOString().split("T")[0],
-      },
+    });
+
+    // Parse the ConcernDate and filter by the provided date range
+    const filteredConcerns = concerns.filter((concern) => {
+      // Parse ConcernDate using moment (format assumed as 'MMMM Do YYYY' like 'September 27th 2024')
+      const parsedDate = moment(concern.ConcernDate, "MMMM Do YYYY");
+
+      // Check if the parsed date is within the startDate and endDate range
+      return parsedDate.isBetween(startDate, endDate, 'day', '[]'); // Inclusive of both bounds
     });
 
     // Return the filtered concerns
-    return res.status(200).json(concerns);
+    return res.status(200).json(filteredConcerns);
   } catch (error) {
     console.error("Error fetching concerns: ", error);
     return res.status(500).json({ error: "Internal Server Error" });
