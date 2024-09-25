@@ -2667,7 +2667,7 @@ server.get("/concern", async (req, res) => {
   }
 });
 
-router.get("/approved-leaves/:id", adminAuth, async (req, res) => {
+server.get("/approved-leaves/:id", adminAuth, async (req, res) => {
   try {
     const userId = new mongoose.Types.ObjectId(req.params.id);
     // Get year and month from query parameters
