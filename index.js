@@ -2667,7 +2667,7 @@ server.get("/concern", async (req, res) => {
   }
 });
 
-server.get("/approved-leaves/:id", adminAuth, async (req, res) => {
+server.get("/approved-leaves/:id", async (req, res) => {
   try {
     const userId = new mongoose.Types.ObjectId(req.params.id);
     const { year, month } = req.query;
