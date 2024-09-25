@@ -612,7 +612,10 @@ server.post("/loginadmin", async (req, res) => {
 
       if (passCheck) {
         // Generate 6-digit OTP
-        const otp = otpGenerator.generate(6, { upperCase: false, specialChars: false });
+        const otp = otpGenerator.generate(6, {
+          upperCase: false,
+          specialChars: false,
+        });
         const otpExpiration = new Date(Date.now() + OTP_EXPIRATION_TIME);
 
         // Save OTP and expiration time in the admin's record
@@ -622,16 +625,23 @@ server.post("/loginadmin", async (req, res) => {
 
         // Send OTP email
         const emailBody = `<p>Your OTP for login is: <b>${otp}</b></p><p>This OTP is valid for 5 minutes.</p>`;
-        const mailSent = await sendMail(adminFound.email, "Your OTP for Admin Login", emailBody);
+        const mailSent = await sendMail(
+          adminFound.email,
+          "Your OTP for Admin Login",
+          emailBody
+        );
 
         if (mailSent) {
           res.status(200).json({
             status: "OTP sent to email",
-            message: "Please check your email for the OTP to complete the login.",
-            success: true
+            message:
+              "Please check your email for the OTP to complete the login.",
+            success: true,
           });
         } else {
-          res.status(500).json({ message: "Failed to send OTP email", success: false });
+          res
+            .status(500)
+            .json({ message: "Failed to send OTP email", success: false });
         }
       } else {
         res
@@ -643,9 +653,7 @@ server.post("/loginadmin", async (req, res) => {
     }
   } catch (error) {
     console.error(error);
-    res
-      .status(500)
-      .json({ message: "Server error", success: false });
+    res.status(500).json({ message: "Server error", success: false });
   }
 });
 
@@ -682,7 +690,7 @@ server.post("/admin/verify-otp", async (req, res) => {
             phone: adminFound.phone,
             _id: adminFound._id,
           },
-          success: true
+          success: true,
         });
       } else {
         res
@@ -2427,14 +2435,15 @@ server.get("/admin/todays-attendance", adminAuth, async (req, res) => {
       });
     } else {
       // If no records are found for today
-      res.status(404).json({ message: "No attendance records found for today" });
+      res
+        .status(404)
+        .json({ message: "No attendance records found for today" });
     }
   } catch (error) {
     console.error(error);
     res.status(500).send("Internal Server Error");
   }
 });
-
 
 //  All Attendace
 server.get("/attendance", async (req, res) => {
@@ -2655,6 +2664,40 @@ server.get("/concern", async (req, res) => {
   } catch (error) {
     console.log(error);
     res.status(500).send("Internal Server Error");
+  }
+});
+
+router.get("/approved-leaves/:id", adminAuth, async (req, res) => {
+  try {
+    const userId = new mongoose.Types.ObjectId(req.params.id);
+    // Get year and month from query parameters
+    const { year, month } = req.query;
+
+    if (!year || !month) {
+      return res.status(400).json({ error: "Please provide year and month" });
+    }
+
+    // Create a date range for the specified month
+    const startDate = new Date(`${year}-${month}-01`);
+    const endDate = new Date(startDate);
+    endDate.setMonth(endDate.getMonth() + 1); // Move to the next month
+
+    // Query to fetch concerns with concernType: Leave and status: Approved
+    const concerns = await ConcernModel.find({
+      concernType: "Leave",
+      status: "Approved",
+      user_id: userId,
+      ConcernDate: {
+        $gte: startDate.toISOString().split("T")[0], // Convert date to 'YYYY-MM-DD' format
+        $lt: endDate.toISOString().split("T")[0],
+      },
+    });
+
+    // Return the filtered concerns
+    return res.status(200).json(concerns);
+  } catch (error) {
+    console.error("Error fetching concerns: ", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
