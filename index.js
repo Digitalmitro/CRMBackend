@@ -2511,6 +2511,7 @@ server.get("/employees", async (req, res) => {
   try {
     const data = await RegisteruserModal.aggregate(
       [
+        // Lookup for messages
         {
           $lookup: {
             from: "messages",
@@ -2519,23 +2520,43 @@ server.get("/employees", async (req, res) => {
             as: "empMessages",
           },
         },
+        // Project necessary fields to reduce document size early
+        {
+          $project: {
+            name: 1,
+            email: 1,
+            phone: 1,
+            image: 1,
+            empMessages: {
+              $map: {
+                input: "$empMessages",
+                as: "msg",
+                in: {
+                  messages: {
+                    $arrayElemAt: [
+                      { $reverseArray: "$$msg.messages" }, // Take most recent message
+                      0,
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        },
+        // Flatten empMessages
         {
           $unwind: {
             path: "$empMessages",
             preserveNullAndEmptyArrays: true,
           },
         },
-        {
-          $unwind: {
-            path: "$empMessages.messages",
-            preserveNullAndEmptyArrays: true,
-          },
-        },
+        // Sort at this stage to minimize the number of sorted documents
         {
           $sort: {
             "empMessages.messages.time": -1,
           },
         },
+        // Group by employee ID
         {
           $group: {
             _id: "$_id",
@@ -2548,6 +2569,7 @@ server.get("/employees", async (req, res) => {
             lastMessageSender: { $first: "$empMessages.messages.senderId" },
           },
         },
+        // Perform the image lookup
         {
           $lookup: {
             from: "images",
@@ -2562,6 +2584,7 @@ server.get("/employees", async (req, res) => {
             preserveNullAndEmptyArrays: true,
           },
         },
+        // Final projection
         {
           $project: {
             name: 1,
@@ -2573,11 +2596,12 @@ server.get("/employees", async (req, res) => {
             lastMessageSender: 1,
           },
         },
+        // Final sort
         {
           $sort: { lastMessageTime: -1 },
         },
       ],
-      { allowDiskUse: true } // Enable disk use
+      { allowDiskUse: true } // Allow external sorting
     );
 
     res.status(200).json(data);
