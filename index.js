@@ -59,8 +59,6 @@ server.use(cookieParser());
 connection();
 
 const Port = process.env.port;
-const secret_key = process.env.secret_key;
-const expiry = process.env.expiry;
 
 const otpGenerator = require("otp-generator");
 const { sendMail } = require("./tools/sendMail");
@@ -2511,84 +2509,80 @@ server.get("/image/:id", async (req, res) => {
 //  message All
 server.get("/employees", async (req, res) => {
   try {
-    const data = await RegisteruserModal.aggregate([
-      // Lookup for messages
-      {
-        $lookup: {
-          from: "messages",
-          localField: "_id",
-          foreignField: "user_id",
-          as: "empMessages",
+    const data = await RegisteruserModal.aggregate(
+      [
+        {
+          $lookup: {
+            from: "messages",
+            localField: "_id",
+            foreignField: "user_id",
+            as: "empMessages",
+          },
         },
-      },
-      {
-        $unwind: {
-          path: "$empMessages",
-          preserveNullAndEmptyArrays: true,
+        {
+          $unwind: {
+            path: "$empMessages",
+            preserveNullAndEmptyArrays: true,
+          },
         },
-      },
-      // Unwind the messages array to access individual messages
-      {
-        $unwind: {
-          path: "$empMessages.messages",
-          preserveNullAndEmptyArrays: true,
+        {
+          $unwind: {
+            path: "$empMessages.messages",
+            preserveNullAndEmptyArrays: true,
+          },
         },
-      },
-      // Sort by the message time in descending order to get the most recent message
-      {
-        $sort: {
-          "empMessages.messages.time": -1,
+        {
+          $sort: {
+            "empMessages.messages.time": -1,
+          },
         },
-      },
-      // Group by _id to get the most recent message
-      {
-        $group: {
-          _id: "$_id",
-          name: { $first: "$name" },
-          email: { $first: "$email" },
-          phone: { $first: "$phone" },
-          image: { $first: "$image" },
-          lastMessage: { $first: "$empMessages.messages.message" },
-          lastMessageTime: { $first: "$empMessages.messages.time" },
-          lastMessageSender: { $first: "$empMessages.messages.senderId" },
+        {
+          $group: {
+            _id: "$_id",
+            name: { $first: "$name" },
+            email: { $first: "$email" },
+            phone: { $first: "$phone" },
+            image: { $first: "$image" },
+            lastMessage: { $first: "$empMessages.messages.message" },
+            lastMessageTime: { $first: "$empMessages.messages.time" },
+            lastMessageSender: { $first: "$empMessages.messages.senderId" },
+          },
         },
-      },
-      // Perform the image lookup
-      {
-        $lookup: {
-          from: "images",
-          localField: "image",
-          foreignField: "imageUrl",
-          as: "empImg",
+        {
+          $lookup: {
+            from: "images",
+            localField: "image",
+            foreignField: "imageUrl",
+            as: "empImg",
+          },
         },
-      },
-      {
-        $unwind: {
-          path: "$empImg",
-          preserveNullAndEmptyArrays: true,
+        {
+          $unwind: {
+            path: "$empImg",
+            preserveNullAndEmptyArrays: true,
+          },
         },
-      },
-      // Final projection
-      {
-        $project: {
-          name: 1,
-          email: 1,
-          phone: 1,
-          image: { $ifNull: ["$empImg", null] },
-          lastMessage: 1,
-          lastMessageTime: 1,
-          lastMessageSender: 1,
+        {
+          $project: {
+            name: 1,
+            email: 1,
+            phone: 1,
+            image: { $ifNull: ["$empImg", null] },
+            lastMessage: 1,
+            lastMessageTime: 1,
+            lastMessageSender: 1,
+          },
         },
-      },
-      // Final sort by lastMessageTime
-      {
-        $sort: { lastMessageTime: -1 },
-      },
-    ]);
+        {
+          $sort: { lastMessageTime: -1 },
+        },
+      ],
+      { allowDiskUse: true } // Enable disk use
+    );
 
     res.status(200).json(data);
   } catch (error) {
-    console.log(error);
+    console.error(error);
     res.status(500).send("Internal Server Error");
   }
 });
